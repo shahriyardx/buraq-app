@@ -161,23 +161,25 @@ export default async function AdminDashboardPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="flex flex-wrap gap-2">
-              <Button render={<Link href="/admin/students" />}>
-                <UserPlus /> Add student
+              <Button asChild>
+                <Link href="/admin/students">
+                  <UserPlus /> Add student
+                </Link>
               </Button>
-              <Button
-                variant="outline"
-                render={<Link href="/admin/attendance" />}
-              >
-                <ClipboardCheck /> Mark attendance
+              <Button variant="outline" asChild>
+                <Link href="/admin/attendance">
+                  <ClipboardCheck /> Mark attendance
+                </Link>
               </Button>
-              <Button
-                variant="outline"
-                render={<Link href="/admin/certificates" />}
-              >
-                <FilePlus2 /> Generate certificate
+              <Button variant="outline" asChild>
+                <Link href="/admin/certificates">
+                  <FilePlus2 /> Generate certificate
+                </Link>
               </Button>
-              <Button variant="outline" render={<Link href="/admin/courses" />}>
-                <CalendarPlus /> New course
+              <Button variant="outline" asChild>
+                <Link href="/admin/courses">
+                  <CalendarPlus /> New course
+                </Link>
               </Button>
             </div>
           </CardContent>

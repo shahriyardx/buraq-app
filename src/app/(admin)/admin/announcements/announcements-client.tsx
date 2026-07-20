@@ -68,14 +68,12 @@ function CreateDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm">
-            <Plus className="mr-2 size-4" />
-            New announcement
-          </Button>
-        }
-      />
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <Plus className="mr-2 size-4" />
+          New announcement
+        </Button>
+      </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New announcement</DialogTitle>

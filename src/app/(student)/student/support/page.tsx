@@ -79,12 +79,10 @@ export default async function StudentSupportPage() {
                         {t.messagesCount === 1 ? "message" : "messages"}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      render={<Link href={`/student/support/${t.id}`} />}
-                    >
-                      <MessageSquare className="mr-2 size-4" /> View
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/student/support/${t.id}`}>
+                        <MessageSquare className="mr-2 size-4" /> View
+                      </Link>
                     </Button>
                   </li>
                 ))}

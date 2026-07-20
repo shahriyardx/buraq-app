@@ -144,25 +144,17 @@ function RowActions({ certificate }: { certificate: CertificateRow }) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          }
-        />
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {certificate.pdfUrl && (
-            <DropdownMenuItem
-              render={
-                <Link
-                  href={certificate.pdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
-            >
-              <Download className="mr-2 size-4" /> Download PDF
+            <DropdownMenuItem asChild>
+              <Link href={certificate.pdfUrl} target="_blank" rel="noreferrer">
+                <Download className="mr-2 size-4" /> Download PDF
+              </Link>
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={copyVerifyLink}>

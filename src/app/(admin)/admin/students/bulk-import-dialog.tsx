@@ -48,14 +48,12 @@ export function BulkImportDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <Upload className="mr-2 size-4" />
-            Import CSV
-          </Button>
-        }
-      />
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Upload className="mr-2 size-4" />
+          Import CSV
+        </Button>
+      </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Bulk import students</DialogTitle>

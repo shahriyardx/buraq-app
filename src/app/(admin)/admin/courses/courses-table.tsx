@@ -47,18 +47,14 @@ function RowActions({ course }: { course: CourseRow }) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button variant="ghost" size="icon" disabled={setStatus.isPending}>
-              <MoreHorizontal className="size-4" />
-            </Button>
-          }
-        />
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" disabled={setStatus.isPending}>
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            render={<Link href={`/admin/courses/${course.id}`} />}
-          >
-            View
+          <DropdownMenuItem asChild>
+            <Link href={`/admin/courses/${course.id}`}>View</Link>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setEditOpen(true)}>
             <Pencil className="mr-2 size-4" /> Edit

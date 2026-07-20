@@ -93,13 +93,11 @@ export function SubmitTicketDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button>
-            <Plus className="mr-2 size-4" /> Submit ticket
-          </Button>
-        }
-      />
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="mr-2 size-4" /> Submit ticket
+        </Button>
+      </DialogTrigger>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Submit a ticket</DialogTitle>

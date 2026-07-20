@@ -37,18 +37,14 @@ function RowActions({ student }: { student: StudentRow }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="icon" disabled={setStatus.isPending}>
-            <MoreHorizontal className="size-4" />
-          </Button>
-        }
-      />
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" disabled={setStatus.isPending}>
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          render={<Link href={`/admin/students/${student.id}`} />}
-        >
-          View profile
+        <DropdownMenuItem asChild>
+          <Link href={`/admin/students/${student.id}`}>View profile</Link>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={async () => {

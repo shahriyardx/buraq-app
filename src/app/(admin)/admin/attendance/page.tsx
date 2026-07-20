@@ -35,13 +35,11 @@ export default async function AttendancePage({
         title="Mark Attendance"
         description="Record daily attendance for a course roster."
       >
-        <Button
-          variant="outline"
-          size="sm"
-          render={<Link href="/admin/attendance/history" />}
-        >
-          <History className="mr-2 size-4" />
-          History
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/admin/attendance/history">
+            <History className="mr-2 size-4" />
+            History
+          </Link>
         </Button>
       </PageHeader>
 

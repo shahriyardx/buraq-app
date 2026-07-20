@@ -146,13 +146,10 @@ export default async function StudentDashboardPage() {
                 <p className="text-xs text-muted-foreground">earned</p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4 w-full"
-              render={<Link href="/student/certificates" />}
-            >
-              <FileText className="mr-2 size-4" /> View certificates
+            <Button variant="outline" size="sm" className="mt-4 w-full" asChild>
+              <Link href="/student/certificates">
+                <FileText className="mr-2 size-4" /> View certificates
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -229,10 +226,12 @@ export default async function StudentDashboardPage() {
             key={l.href}
             variant="outline"
             className="h-auto flex-col gap-2 py-4"
-            render={<Link href={l.href} />}
+            asChild
           >
-            <l.icon className="size-5" />
-            <span className="text-xs">{l.label}</span>
+            <Link href={l.href}>
+              <l.icon className="size-5" />
+              <span className="text-xs">{l.label}</span>
+            </Link>
           </Button>
         ))}
       </div>

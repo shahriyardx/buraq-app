@@ -29,14 +29,10 @@ function RowActions({ certificate }: { certificate: CertificateRow }) {
   return (
     <div className="flex items-center justify-end gap-2">
       {certificate.pdfUrl ? (
-        <Button
-          variant="outline"
-          size="sm"
-          render={
-            <Link href={certificate.pdfUrl} target="_blank" rel="noreferrer" />
-          }
-        >
-          <Download className="mr-2 size-4" /> Download
+        <Button variant="outline" size="sm" asChild>
+          <Link href={certificate.pdfUrl} target="_blank" rel="noreferrer">
+            <Download className="mr-2 size-4" /> Download
+          </Link>
         </Button>
       ) : (
         <span className="text-xs text-muted-foreground">PDF unavailable</span>

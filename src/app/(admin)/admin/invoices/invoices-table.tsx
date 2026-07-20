@@ -61,25 +61,21 @@ function RowActions({ invoice }: { invoice: InvoiceRow }) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button variant="ghost" size="icon" disabled={pending}>
-              <MoreHorizontal className="size-4" />
-            </Button>
-          }
-        />
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" disabled={pending}>
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {invoice.pdfUrl && (
-            <DropdownMenuItem
-              render={
-                <Link
-                  href={invoice.pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                />
-              }
-            >
-              <Download className="mr-2 size-4" /> Download PDF
+            <DropdownMenuItem asChild>
+              <Link
+                href={invoice.pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Download className="mr-2 size-4" /> Download PDF
+              </Link>
             </DropdownMenuItem>
           )}
           {invoice.status !== "PAID" && (

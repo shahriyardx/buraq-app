@@ -62,14 +62,12 @@ export function EnrollStudentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm">
-            <UserPlus className="mr-2 size-4" />
-            Enroll student
-          </Button>
-        }
-      />
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <UserPlus className="mr-2 size-4" />
+          Enroll student
+        </Button>
+      </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Enroll student</DialogTitle>

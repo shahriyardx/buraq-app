@@ -71,14 +71,12 @@ function AddAdminDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm">
-            <Plus className="mr-2 size-4" />
-            Add admin
-          </Button>
-        }
-      />
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <Plus className="mr-2 size-4" />
+          Add admin
+        </Button>
+      </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add admin</DialogTitle>

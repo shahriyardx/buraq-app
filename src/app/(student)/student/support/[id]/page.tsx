@@ -37,12 +37,10 @@ export default async function StudentTicketThreadPage({
         title={ticket.subject}
         description={`Ticket ${ticket.ticketId}`}
       >
-        <Button
-          variant="outline"
-          size="sm"
-          render={<Link href="/student/support" />}
-        >
-          <ArrowLeft className="mr-2 size-4" /> Back
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/student/support">
+            <ArrowLeft className="mr-2 size-4" /> Back
+          </Link>
         </Button>
       </PageHeader>
 

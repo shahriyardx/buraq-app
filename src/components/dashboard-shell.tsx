@@ -89,15 +89,52 @@ function NavLinks({
   );
 }
 
+function Horseshoe({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      className={className}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M30 16 A34 34 0 1 0 70 16"
+        stroke="currentColor"
+        strokeWidth="11"
+        strokeLinecap="round"
+      />
+      {[
+        [22, 40],
+        [20, 58],
+        [30, 74],
+        [70, 74],
+        [80, 58],
+        [78, 40],
+      ].map(([cx, cy]) => (
+        <circle
+          key={`${cx}-${cy}`}
+          cx={cx}
+          cy={cy}
+          r="2.6"
+          fill="currentColor"
+          opacity="0.5"
+        />
+      ))}
+    </svg>
+  );
+}
+
 function Brand() {
   return (
     <div className="flex items-center gap-3 px-6 py-5">
-      <div className="flex size-9 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
-        B
-      </div>
+      <Horseshoe className="size-9 text-sidebar-primary" />
       <div className="leading-tight">
-        <p className="text-sm font-semibold text-sidebar-foreground">Buraq</p>
-        <p className="text-xs text-sidebar-foreground/60">Riding School</p>
+        <p className="font-heading text-base font-semibold text-sidebar-foreground">
+          Buraq
+        </p>
+        <p className="text-xs tracking-wide text-sidebar-foreground/60">
+          Riding School
+        </p>
       </div>
     </div>
   );
@@ -130,12 +167,10 @@ export function DashboardShell({
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur lg:px-8">
           {/* Mobile menu */}
           <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger
-              render={
-                <Button variant="ghost" size="icon" className="lg:hidden" />
-              }
-            >
-              <Menu className="size-5" />
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="lg:hidden">
+                <Menu className="size-5" />
+              </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-64 bg-sidebar p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
@@ -152,19 +187,17 @@ export function DashboardShell({
 
           <div className="ml-auto flex items-center gap-3">
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                }
-              >
-                <Avatar className="size-9">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    {initials(user.name)}
-                  </AvatarFallback>
-                </Avatar>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Avatar className="size-9">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                      {initials(user.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>

@@ -82,12 +82,8 @@ export function TicketsTable({ tickets }: { tickets: TicketRow[] }) {
       header: "",
       className: "w-16 text-right",
       render: (t) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          render={<Link href={`/admin/support/${t.id}`} />}
-        >
-          View
+        <Button variant="ghost" size="sm" asChild>
+          <Link href={`/admin/support/${t.id}`}>View</Link>
         </Button>
       ),
     },

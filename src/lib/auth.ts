@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import { sendEmail } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 
 export const auth = betterAuth({
@@ -11,6 +12,13 @@ export const auth = betterAuth({
     enabled: true,
     // Admin-provisioned accounts; disable public sign-up UI (no verify email flow).
     requireEmailVerification: false,
+    async sendResetPassword({ user, url }) {
+      await sendEmail({
+        to: user.email,
+        subject: "Reset your Buraq Horse Riding School password",
+        text: `Hi ${user.name},\n\nReset your password using the link below:\n${url}\n\nIf you didn't request this, you can ignore this email.`,
+      });
+    },
   },
   user: {
     additionalFields: {

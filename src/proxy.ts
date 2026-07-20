@@ -5,7 +5,12 @@ import { type NextRequest, NextResponse } from "next/server";
 // Optimistic-only: checks for the presence of a session cookie to route users.
 // Real authorization (role, status) is enforced in the DAL and server actions.
 
-const PUBLIC_PATHS = ["/login", "/verify"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/verify",
+  "/forgot-password",
+  "/reset-password",
+];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

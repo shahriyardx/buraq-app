@@ -1,33 +1,46 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+
+const schema = z
+  .object({
+    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    confirm: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((v) => v.newPassword === v.confirm, {
+    message: "Passwords do not match",
+    path: ["confirm"],
+  });
+
+type FormValues = z.infer<typeof schema>;
+
+const inputClass =
+  "h-11 border-[#20302a]/15 bg-white/70 focus-visible:border-[#a5772f] focus-visible:ring-[#a5772f]/25";
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const {
+    control,
+    handleSubmit,
+    formState: { isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { newPassword: "", confirm: "" },
+  });
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const newPassword = String(fd.get("newPassword"));
-    const confirm = String(fd.get("confirm"));
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
-      return;
-    }
-    if (newPassword !== confirm) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    setLoading(true);
-    const { error } = await authClient.resetPassword({ newPassword, token });
-    setLoading(false);
+  async function onSubmit(values: FormValues) {
+    const { error } = await authClient.resetPassword({
+      newPassword: values.newPassword,
+      token,
+    });
     if (error) {
       toast.error(error.message ?? "Reset failed");
       return;
@@ -37,39 +50,53 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
-      <div className="space-y-2">
-        <Label htmlFor="newPassword" className="text-[#20302a]/80">
-          New password
-        </Label>
-        <Input
-          id="newPassword"
-          name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          required
-          className="h-11 border-[#20302a]/15 bg-white/70 focus-visible:border-[#a5772f] focus-visible:ring-[#a5772f]/25"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="confirm" className="text-[#20302a]/80">
-          Confirm password
-        </Label>
-        <Input
-          id="confirm"
-          name="confirm"
-          type="password"
-          autoComplete="new-password"
-          required
-          className="h-11 border-[#20302a]/15 bg-white/70 focus-visible:border-[#a5772f] focus-visible:ring-[#a5772f]/25"
-        />
-      </div>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <Controller
+        control={control}
+        name="newPassword"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel htmlFor="newPassword" className="text-[#20302a]/80">
+              New password
+            </FieldLabel>
+            <Input
+              id="newPassword"
+              type="password"
+              autoComplete="new-password"
+              aria-invalid={fieldState.invalid}
+              className={inputClass}
+              {...field}
+            />
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
+      <Controller
+        control={control}
+        name="confirm"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel htmlFor="confirm" className="text-[#20302a]/80">
+              Confirm password
+            </FieldLabel>
+            <Input
+              id="confirm"
+              type="password"
+              autoComplete="new-password"
+              aria-invalid={fieldState.invalid}
+              className={inputClass}
+              {...field}
+            />
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
       <Button
         type="submit"
-        disabled={loading}
+        disabled={isSubmitting}
         className="h-11 w-full bg-[#7a5a2c] text-[#f4ece0] shadow-sm transition-colors hover:bg-[#6a4d25]"
       >
-        {loading ? "Updating…" : "Update password"}
+        {isSubmitting ? "Updating…" : "Update password"}
       </Button>
     </form>
   );

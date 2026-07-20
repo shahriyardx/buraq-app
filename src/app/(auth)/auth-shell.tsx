@@ -40,7 +40,7 @@ export function AuthShell({
           className="absolute inset-x-0 bottom-0 h-3/5 w-full"
           viewBox="0 0 600 400"
           preserveAspectRatio="none"
-          aria-hidden
+          aria-hidden="true"
         >
           <path
             d="M0 250 Q150 200 320 240 T600 220 V400 H0 Z"
@@ -55,7 +55,7 @@ export function AuthShell({
           className="absolute inset-x-0 bottom-[20%] w-full opacity-90"
           viewBox="0 0 600 80"
           preserveAspectRatio="none"
-          aria-hidden
+          aria-hidden="true"
         >
           <g fill="#e9e2d0">
             <rect x="0" y="14" width="600" height="7" rx="2" />
@@ -111,7 +111,12 @@ export function AuthShell({
 
 function Horseshoe({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 100 100" className={className} fill="none" aria-hidden>
+    <svg
+      viewBox="0 0 100 100"
+      className={className}
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M30 16 A34 34 0 1 0 70 16"
         stroke="currentColor"

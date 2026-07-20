@@ -35,6 +35,7 @@ export type AdminRow = {
   name: string;
   email: string;
   status: string;
+  isSuperAdmin: boolean;
   createdAt: string;
 };
 
@@ -158,8 +159,12 @@ function RemoveButton({ admin, isSelf }: { admin: AdminRow; isSelf: boolean }) {
   const router = useRouter();
   const remove = trpc.settings.removeAdmin.useMutation();
 
-  if (admin.status === "INACTIVE") {
-    return <span className="text-xs text-muted-foreground">Removed</span>;
+  if (admin.isSuperAdmin || admin.status === "INACTIVE") {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {admin.status === "INACTIVE" ? "Removed" : "—"}
+      </span>
+    );
   }
 
   return (
@@ -186,9 +191,11 @@ function RemoveButton({ admin, isSelf }: { admin: AdminRow; isSelf: boolean }) {
 export function AdminsPanel({
   admins,
   currentUserId,
+  canManage,
 }: {
   admins: AdminRow[];
   currentUserId: string;
+  canManage: boolean;
 }) {
   const columns: Column<AdminRow>[] = [
     {
@@ -202,12 +209,15 @@ export function AdminsPanel({
             </AvatarFallback>
           </Avatar>
           <div className="leading-tight">
-            <p className="font-medium">
+            <p className="flex items-center gap-2 font-medium">
               {a.name}
-              {a.id === currentUserId && (
-                <span className="ml-2 text-xs text-muted-foreground">
-                  (you)
+              {a.isSuperAdmin && (
+                <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-foreground">
+                  Super-admin
                 </span>
+              )}
+              {a.id === currentUserId && (
+                <span className="text-xs text-muted-foreground">(you)</span>
               )}
             </p>
             <p className="text-xs text-muted-foreground">{a.email}</p>
@@ -225,22 +235,35 @@ export function AdminsPanel({
       header: "Added",
       render: (a) => formatDate(a.createdAt),
     },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12 text-right",
-      render: (a) => <RemoveButton admin={a} isSelf={a.id === currentUserId} />,
-    },
+    ...(canManage
+      ? [
+          {
+            key: "actions",
+            header: "",
+            className: "w-12 text-right",
+            render: (a: AdminRow) => (
+              <RemoveButton admin={a} isSelf={a.id === currentUserId} />
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
-    <DataTable
-      columns={columns}
-      rows={admins}
-      getRowKey={(a) => a.id}
-      searchText={(a) => `${a.name} ${a.email}`}
-      searchPlaceholder="Search admins…"
-      toolbar={<AddAdminDialog />}
-    />
+    <div className="space-y-3">
+      {!canManage && (
+        <p className="text-sm text-muted-foreground">
+          Only the super-admin can add or remove administrators.
+        </p>
+      )}
+      <DataTable
+        columns={columns}
+        rows={admins}
+        getRowKey={(a) => a.id}
+        searchText={(a) => `${a.name} ${a.email}`}
+        searchPlaceholder="Search admins…"
+        toolbar={canManage ? <AddAdminDialog /> : undefined}
+      />
+    </div>
   );
 }

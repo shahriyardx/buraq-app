@@ -17,7 +17,7 @@ const TEMPLATE_ORDER = [
 const emailKeyEnum = z.enum(TEMPLATE_ORDER);
 
 export const settingsRouter = createTRPCRouter({
-  get: adminProcedure.query(async () => {
+  get: adminProcedure.query(async ({ ctx }) => {
     const [settings, certTemplate, emailTemplates, admins, auditLogs] =
       await Promise.all([
         prisma.schoolSettings.findUnique({ where: { id: SINGLETON } }),
@@ -25,12 +25,13 @@ export const settingsRouter = createTRPCRouter({
         prisma.emailTemplate.findMany(),
         prisma.user.findMany({
           where: { role: "ADMIN" },
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ isSuperAdmin: "desc" }, { createdAt: "desc" }],
           select: {
             id: true,
             name: true,
             email: true,
             status: true,
+            isSuperAdmin: true,
             createdAt: true,
           },
         }),
@@ -73,6 +74,8 @@ export const settingsRouter = createTRPCRouter({
       certificate,
       admins,
       auditLogs,
+      currentUserId: ctx.session.user.id,
+      isSuperAdmin: Boolean(ctx.session.user.isSuperAdmin),
     };
   }),
 
@@ -211,6 +214,12 @@ export const settingsRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      if (!ctx.session.user.isSuperAdmin) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the super-admin can add administrators.",
+        });
+      }
       const admin = await createUserWithPassword({
         name: input.name,
         email: input.email,
@@ -232,10 +241,26 @@ export const settingsRouter = createTRPCRouter({
   removeAdmin: adminProcedure
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      if (!ctx.session.user.isSuperAdmin) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the super-admin can remove administrators.",
+        });
+      }
       if (input.userId === ctx.session.user.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "You cannot remove your own admin account.",
+        });
+      }
+      const target = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { isSuperAdmin: true },
+      });
+      if (target?.isSuperAdmin) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "The super-admin cannot be removed.",
         });
       }
 

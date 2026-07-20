@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/dal";
+import { api } from "@/trpc/server";
 import { AuthShell } from "../auth-shell";
 import { LoginForm } from "./login-form";
 
@@ -9,6 +10,7 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const session = await getSession();
   if (session) redirect(session.user.role === "ADMIN" ? "/admin" : "/student");
+  if (await api.bootstrap.needsSetup()) redirect("/setup");
 
   const params = await searchParams;
   const redirectTo =

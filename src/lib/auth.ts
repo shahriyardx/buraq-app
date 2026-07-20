@@ -34,6 +34,12 @@ export const auth = betterAuth({
         defaultValue: "ACTIVE",
         input: false,
       },
+      isSuperAdmin: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
       studentId: { type: "string", required: false, input: false },
       phone: { type: "string", required: false },
       dob: { type: "date", required: false },

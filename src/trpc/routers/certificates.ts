@@ -3,6 +3,7 @@ import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { formatDate } from "@/lib/format";
 import { generateCertificateId } from "@/lib/ids";
+import { notifyStudent } from "@/lib/notify";
 import { renderCertificatePdf } from "@/lib/pdf/certificate";
 import { prisma } from "@/lib/prisma";
 import { appUrl, qrDataUrl } from "@/lib/qr";
@@ -102,19 +103,20 @@ export const certificatesRouter = createTRPCRouter({
         prisma.certificateTemplate.findUnique({ where: { id: "singleton" } }),
       ]);
 
+      const buf = await renderCertificatePdf({
+        schoolName: settings?.name ?? "Buraq Horse Riding School",
+        studentName: student.name,
+        courseName: course.name,
+        courseLevel: course.level,
+        certificateId,
+        issuedDate: formatDate(issuedDate),
+        qrDataUrl: qr,
+        signatureName: template?.signatureName,
+        verifyUrl,
+      });
+
       let pdfUrl: string | null = null;
       if (isR2Configured()) {
-        const buf = await renderCertificatePdf({
-          schoolName: settings?.name ?? "Buraq Horse Riding School",
-          studentName: student.name,
-          courseName: course.name,
-          courseLevel: course.level,
-          certificateId,
-          issuedDate: formatDate(issuedDate),
-          qrDataUrl: qr,
-          signatureName: template?.signatureName,
-          verifyUrl,
-        });
         pdfUrl = await uploadBufferToR2(
           buf,
           "certificates",
@@ -126,6 +128,14 @@ export const certificatesRouter = createTRPCRouter({
           data: { pdfUrl },
         });
       }
+
+      // Email the student their certificate (PDF attached).
+      await notifyStudent({
+        studentId: student.id,
+        templateKey: "CERTIFICATE",
+        vars: { courseName: course.name, certificateId },
+        attachments: [{ filename: `${certificateId}.pdf`, content: buf }],
+      });
 
       await logAction({
         actorId: ctx.session.user.id,

@@ -1,5 +1,6 @@
 import "server-only";
 import { generateInvoiceNumber } from "@/lib/ids";
+import { notifyStudent } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -49,6 +50,15 @@ export async function enrollStudent(input: {
         dueDate: due,
         status: "UNPAID",
       },
+    });
+  }
+
+  // Welcome email on a newly-activated enrollment.
+  if (!existing && status === "ACTIVE") {
+    await notifyStudent({
+      studentId,
+      templateKey: "ENROLLMENT",
+      vars: { courseName: course.name },
     });
   }
 

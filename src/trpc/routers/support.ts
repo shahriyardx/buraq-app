@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { generateTicketId } from "@/lib/ids";
+import { notifyStudent } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { adminProcedure, createTRPCRouter, studentProcedure } from "../init";
 
@@ -86,7 +87,13 @@ export const supportRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const ticket = await prisma.supportTicket.findUnique({
         where: { id: input.ticketId },
-        select: { id: true, ticketId: true, status: true },
+        select: {
+          id: true,
+          ticketId: true,
+          status: true,
+          subject: true,
+          studentId: true,
+        },
       });
       if (!ticket) throw new TRPCError({ code: "NOT_FOUND" });
 
@@ -106,6 +113,13 @@ export const supportRouter = createTRPCRouter({
           data: { status: "IN_PROGRESS", assignedTo: ctx.session.user.id },
         });
       }
+
+      // Notify the student of the admin reply.
+      await notifyStudent({
+        studentId: ticket.studentId,
+        templateKey: "SUPPORT",
+        vars: { subject: ticket.subject, ticketId: ticket.ticketId },
+      });
 
       await logAction({
         actorId: ctx.session.user.id,

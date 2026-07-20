@@ -97,8 +97,9 @@ model User {
   updatedAt     DateTime @updatedAt
 
   // domain fields (declared as additionalFields in better-auth config)
-  role      Role       @default(STUDENT)
-  status    UserStatus @default(ACTIVE)
+  role         Role       @default(STUDENT)
+  isSuperAdmin Boolean    @default(false)
+  status       UserStatus @default(ACTIVE)
   studentId String?    @unique // BURAQ-STU-XXXXXX, students only
   phone     String?
   dob       DateTime?

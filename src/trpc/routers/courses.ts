@@ -3,6 +3,7 @@ import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { enrollStudent } from "@/lib/enrollments";
 import { generateInvoiceNumber } from "@/lib/ids";
+import { notifyStudent } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { adminProcedure, createTRPCRouter, studentProcedure } from "../init";
 
@@ -227,6 +228,12 @@ export const coursesRouter = createTRPCRouter({
           },
         });
       }
+
+      await notifyStudent({
+        studentId: enrollment.studentId,
+        templateKey: "ENROLLMENT",
+        vars: { courseName: enrollment.course.name },
+      });
 
       await logAction({
         actorId: ctx.session.user.id,

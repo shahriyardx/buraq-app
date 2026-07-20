@@ -23,6 +23,7 @@ export default async function SettingsPage() {
     name: a.name,
     email: a.email,
     status: a.status,
+    isSuperAdmin: a.isSuperAdmin,
     createdAt: a.createdAt.toISOString(),
   }));
 
@@ -61,7 +62,11 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="admins">
-          <AdminsPanel admins={adminRows} currentUserId={session.user.id} />
+          <AdminsPanel
+            admins={adminRows}
+            currentUserId={session.user.id}
+            canManage={data.isSuperAdmin}
+          />
         </TabsContent>
 
         <TabsContent value="email">

@@ -109,11 +109,15 @@ async function main() {
   }
 
   // ── Users ─────────────────────────────────────────────────────────────────
-  await createUser({
+  const admin = await createUser({
     name: "School Admin",
     email: "admin@buraq.test",
     password: "Admin@12345",
     role: "ADMIN",
+  });
+  await prisma.user.update({
+    where: { id: admin.id },
+    data: { isSuperAdmin: true },
   });
 
   const students = await Promise.all(

@@ -1,0 +1,57 @@
+const currency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+export function formatCurrency(
+  value: number | string | { toString(): string },
+) {
+  const n = typeof value === "number" ? value : Number(value.toString());
+  return currency.format(Number.isFinite(n) ? n : 0);
+}
+
+const dateFmt = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
+const dateTimeFmt = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+export function formatDate(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return dateFmt.format(d);
+}
+
+export function formatDateTime(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return dateTimeFmt.format(d);
+}
+
+/** yyyy-mm-dd for date inputs */
+export function toDateInput(value: Date | string | null | undefined) {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+export function initials(name: string) {
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}

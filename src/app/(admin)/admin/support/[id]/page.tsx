@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { ArrowLeft, Paperclip } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -8,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/dal";
 import { formatDateTime } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
+import { api } from "@/trpc/server";
 import { ReplyForm } from "../reply-form";
 import { StatusControl } from "../status-control";
 
@@ -25,23 +26,11 @@ export default async function TicketThreadPage({
   await requireAdmin();
   const { id } = await params;
 
-  const ticket = await prisma.supportTicket.findUnique({
-    where: { id },
-    include: {
-      student: { select: { name: true, studentId: true } },
-      messages: { orderBy: { createdAt: "asc" } },
-    },
+  const ticket = await api.support.get({ id }).catch((err) => {
+    if (err instanceof TRPCError && err.code === "NOT_FOUND") return null;
+    throw err;
   });
-
   if (!ticket) notFound();
-
-  // Messages carry only authorId + role, so resolve display names in one query.
-  const authorIds = [...new Set(ticket.messages.map((m) => m.authorId))];
-  const authors = await prisma.user.findMany({
-    where: { id: { in: authorIds } },
-    select: { id: true, name: true },
-  });
-  const nameById = new Map(authors.map((a) => [a.id, a.name]));
 
   return (
     <>
@@ -63,10 +52,10 @@ export default async function TicketThreadPage({
           <div>
             <dt className="text-muted-foreground">Student</dt>
             <dd className="font-medium">
-              {ticket.student.name}
-              {ticket.student.studentId ? (
+              {ticket.studentName}
+              {ticket.studentStudentId ? (
                 <span className="ml-2 text-xs text-muted-foreground">
-                  {ticket.student.studentId}
+                  {ticket.studentStudentId}
                 </span>
               ) : null}
             </dd>
@@ -119,8 +108,7 @@ export default async function TicketThreadPage({
                       )}
                     >
                       <span className="font-medium">
-                        {nameById.get(m.authorId) ??
-                          (isAdmin ? "Admin" : "Student")}
+                        {m.authorName ?? (isAdmin ? "Admin" : "Student")}
                       </span>
                       <span>·</span>
                       <span>{formatDateTime(m.createdAt)}</span>

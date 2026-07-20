@@ -1,47 +1,62 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { Field, FieldError } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
-import { type ActionState, initialActionState } from "@/lib/form";
-import { replyTicketAction } from "./actions";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  body: z.string().min(1, "Message cannot be empty"),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function ReplyForm({ ticketId }: { ticketId: string }) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const action = replyTicketAction.bind(null, ticketId) as (
-    prev: ActionState,
-    fd: FormData,
-  ) => Promise<ActionState>;
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialActionState,
-  );
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { body: "" },
+  });
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
-      formRef.current?.reset();
+  const reply = trpc.support.reply.useMutation();
+
+  async function onSubmit(values: FormValues) {
+    try {
+      await reply.mutateAsync({ ticketId, body: values.body });
+      toast.success("Reply sent.");
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3">
-      <Textarea
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+      <Controller
+        control={control}
         name="body"
-        rows={3}
-        placeholder="Write a reply…"
-        required
-        aria-label="Reply message"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <Textarea
+              rows={3}
+              placeholder="Write a reply…"
+              aria-label="Reply message"
+              aria-invalid={fieldState.invalid}
+              {...field}
+            />
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
       />
       <div className="flex justify-end">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Sending…" : "Send reply"}
+        <Button type="submit" disabled={reply.isPending}>
+          {reply.isPending ? "Sending…" : "Send reply"}
         </Button>
       </div>
     </form>

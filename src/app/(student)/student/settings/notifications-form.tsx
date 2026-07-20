@@ -1,13 +1,20 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { initialActionState } from "@/lib/form";
-import { updateNotificationsAction } from "./actions";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  emailNotifications: z.boolean(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function NotificationsForm({
   emailNotifications,
@@ -15,38 +22,55 @@ export function NotificationsForm({
   emailNotifications: boolean;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    updateNotificationsAction,
-    initialActionState,
-  );
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { emailNotifications },
+  });
+
+  const update = trpc.account.updateNotifications.useMutation();
+
+  async function onSubmit(values: FormValues) {
+    try {
+      await update.mutateAsync({
+        emailNotifications: values.emailNotifications,
+      });
+      toast.success(
+        values.emailNotifications
+          ? "Email alerts enabled."
+          : "Email alerts disabled.",
+      );
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
-    <form action={formAction} className="space-y-4">
-      <div className="flex items-start gap-3">
-        <Checkbox
-          id="emailNotifications"
-          name="emailNotifications"
-          defaultChecked={emailNotifications}
-        />
-        <div className="space-y-1">
-          <Label htmlFor="emailNotifications">Email alerts</Label>
-          <p className="text-sm text-muted-foreground">
-            Receive email updates about classes, invoices, and announcements.
-          </p>
-        </div>
-      </div>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Controller
+        control={control}
+        name="emailNotifications"
+        render={({ field }) => (
+          <Field orientation="horizontal" className="items-start gap-3">
+            <Checkbox
+              id="emailNotifications"
+              checked={field.value}
+              onCheckedChange={(checked) => field.onChange(checked === true)}
+            />
+            <div className="space-y-1">
+              <FieldLabel htmlFor="emailNotifications">Email alerts</FieldLabel>
+              <p className="text-sm text-muted-foreground">
+                Receive email updates about classes, invoices, and
+                announcements.
+              </p>
+            </div>
+          </Field>
+        )}
+      />
 
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Save preferences"}
+      <Button type="submit" disabled={update.isPending}>
+        {update.isPending ? "Saving…" : "Save preferences"}
       </Button>
     </form>
   );

@@ -19,44 +19,14 @@ import {
 } from "@/components/ui/card";
 import { requireStudent } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { EnrollButton } from "./enroll-button";
 
 export const metadata: Metadata = { title: "My Courses" };
 
 export default async function StudentCoursesPage() {
-  const session = await requireStudent();
-  const studentId = session.user.id;
-
-  const [enrollments, activeCourses, certificates] = await Promise.all([
-    prisma.enrollment.findMany({
-      where: { studentId },
-      include: { course: true },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.course.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: { name: "asc" },
-    }),
-    prisma.certificate.findMany({
-      where: { studentId, status: "VALID" },
-      select: { courseId: true },
-    }),
-  ]);
-
-  const current = enrollments.filter((e) => e.status === "ACTIVE");
-  const history = enrollments.filter((e) => e.status === "COMPLETED");
-  const enrollmentStatusByCourse = new Map(
-    enrollments.map((e) => [e.courseId, e.status]),
-  );
-  const certifiedCourses = new Set(certificates.map((c) => c.courseId));
-
-  // Active courses the student isn't already in (ACTIVE/COMPLETED). Courses with
-  // a PENDING request stay in the list so we can show a disabled "Requested".
-  const browse = activeCourses.filter((c) => {
-    const status = enrollmentStatusByCourse.get(c.id);
-    return status !== "ACTIVE" && status !== "COMPLETED";
-  });
+  await requireStudent();
+  const { current, history, browse } = await api.courses.myCourses();
 
   return (
     <>
@@ -138,36 +108,33 @@ export default async function StudentCoursesPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {history.map((e) => {
-                const certified = certifiedCourses.has(e.courseId);
-                return (
-                  <Card key={e.id} className="p-5">
-                    <CardHeader className="p-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-base">
-                          {e.course.name}
-                        </CardTitle>
-                        <StatusBadge status={e.status} />
-                      </div>
-                      <CardDescription>
-                        Completed {formatDate(e.endDate)}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-0 pt-3">
-                      {certified ? (
-                        <Link
-                          href="/student/certificates"
-                          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                        >
-                          <Award className="size-4" /> Certificate issued
-                        </Link>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              {history.map((e) => (
+                <Card key={e.id} className="p-5">
+                  <CardHeader className="p-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base">
+                        {e.courseName}
+                      </CardTitle>
+                      <StatusBadge status={e.status} />
+                    </div>
+                    <CardDescription>
+                      Completed {formatDate(e.endDate)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 pt-3">
+                    {e.certified ? (
+                      <Link
+                        href="/student/certificates"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                      >
+                        <Award className="size-4" /> Certificate issued
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </section>
@@ -190,46 +157,42 @@ export default async function StudentCoursesPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {browse.map((c) => {
-                const requested =
-                  enrollmentStatusByCourse.get(c.id) === "PENDING";
-                return (
-                  <Card key={c.id} className="flex flex-col p-5">
-                    <CardHeader className="p-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-base">{c.name}</CardTitle>
-                        {c.level && (
-                          <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                            {c.level}
-                          </span>
-                        )}
-                      </div>
-                      {c.description && (
-                        <CardDescription className="line-clamp-2">
-                          {c.description}
-                        </CardDescription>
+              {browse.map((c) => (
+                <Card key={c.id} className="flex flex-col p-5">
+                  <CardHeader className="p-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base">{c.name}</CardTitle>
+                      {c.level && (
+                        <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                          {c.level}
+                        </span>
                       )}
-                    </CardHeader>
-                    <CardContent className="flex flex-1 flex-col justify-between gap-4 p-0 pt-3">
-                      <dl className="space-y-2 text-sm">
-                        <Meta icon={User} label="Instructor">
-                          {c.instructor ?? "—"}
-                        </Meta>
-                        <Meta icon={GraduationCap} label="Price">
-                          {formatCurrency(c.price)}
-                        </Meta>
-                      </dl>
-                      {requested ? (
-                        <Button size="sm" className="w-full" disabled>
-                          Requested
-                        </Button>
-                      ) : (
-                        <EnrollButton courseId={c.id} courseName={c.name} />
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                    {c.description && (
+                      <CardDescription className="line-clamp-2">
+                        {c.description}
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col justify-between gap-4 p-0 pt-3">
+                    <dl className="space-y-2 text-sm">
+                      <Meta icon={User} label="Instructor">
+                        {c.instructor ?? "—"}
+                      </Meta>
+                      <Meta icon={GraduationCap} label="Price">
+                        {formatCurrency(c.price)}
+                      </Meta>
+                    </dl>
+                    {c.requested ? (
+                      <Button size="sm" className="w-full" disabled>
+                        Requested
+                      </Button>
+                    ) : (
+                      <EnrollButton courseId={c.id} courseName={c.name} />
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </section>

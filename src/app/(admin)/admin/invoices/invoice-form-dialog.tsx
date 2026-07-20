@@ -1,8 +1,11 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,8 +16,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -22,11 +30,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { initialActionState } from "@/lib/form";
-import { createInvoiceAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export type StudentOption = { id: string; name: string };
 export type CourseOption = { id: string; name: string; price: string };
+
+const schema = z
+  .object({
+    studentId: z.string().min(1, "Student is required"),
+    courseId: z.string().optional(),
+    amount: z
+      .string()
+      .refine((v) => Number(v) > 0, "Amount must be greater than 0"),
+    discount: z
+      .string()
+      .refine((v) => Number(v) >= 0, "Discount cannot be negative"),
+    dueDate: z.string().min(1, "Due date is required"),
+  })
+  .refine((v) => Number(v.discount) <= Number(v.amount), {
+    message: "Discount cannot exceed the amount.",
+    path: ["discount"],
+  });
+
+type FormValues = z.infer<typeof schema>;
 
 export function InvoiceFormDialog({
   students,
@@ -39,21 +65,38 @@ export function InvoiceFormDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [state, formAction, pending] = useActionState(
-    createInvoiceAction,
-    initialActionState,
-  );
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit, reset, setValue, getValues } =
+    useForm<FormValues>({
+      resolver: zodResolver(schema),
+      defaultValues: {
+        studentId: "",
+        courseId: undefined,
+        amount: "",
+        discount: "0",
+        dueDate: "",
+      },
+    });
+
+  const create = trpc.invoices.create.useMutation();
+
+  async function onSubmit(values: FormValues) {
+    try {
+      const res = await create.mutateAsync({
+        studentId: values.studentId,
+        courseId: values.courseId || null,
+        amount: values.amount,
+        discount: values.discount,
+        dueDate: values.dueDate,
+      });
+      toast.success(`Invoice ${res.invoiceNumber} created.`);
       setOpen(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -66,77 +109,141 @@ export function InvoiceFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Student</Label>
-              <Select name="studentId" required>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a student" />
-                </SelectTrigger>
-                <SelectContent>
-                  {students.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Course (optional)</Label>
-              <Select
-                name="courseId"
-                onValueChange={(value) => {
-                  const course = courses.find((c) => c.id === value);
-                  if (course && !amount) setAmount(course.price);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount</Label>
-              <Input
-                id="amount"
-                name="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="discount">Discount</Label>
-              <Input
-                id="discount"
-                name="discount"
-                type="number"
-                min="0"
-                step="0.01"
-                defaultValue="0"
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="dueDate">Due date</Label>
-              <Input id="dueDate" name="dueDate" type="date" required />
-            </div>
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup className="sm:grid sm:grid-cols-2 sm:gap-4">
+            <Controller
+              control={control}
+              name="studentId"
+              render={({ field, fieldState }) => (
+                <Field
+                  data-invalid={fieldState.invalid}
+                  className="sm:col-span-2"
+                >
+                  <FieldLabel>Student</FieldLabel>
+                  <Select
+                    value={field.value ?? ""}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      aria-invalid={fieldState.invalid}
+                    >
+                      <SelectValue placeholder="Select a student" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {students.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
 
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Generate invoice"}
+            <Controller
+              control={control}
+              name="courseId"
+              render={({ field }) => (
+                <Field className="sm:col-span-2">
+                  <FieldLabel>Course (optional)</FieldLabel>
+                  <Select
+                    value={field.value ?? ""}
+                    onValueChange={(v) => {
+                      field.onChange(v || undefined);
+                      const course = courses.find((c) => c.id === v);
+                      if (course && !getValues("amount")) {
+                        setValue("amount", course.price);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {courses.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="amount"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="amount">Amount</FieldLabel>
+                  <Input
+                    id="amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="discount"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="discount">Discount</FieldLabel>
+                  <Input
+                    id="discount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="dueDate"
+              render={({ field, fieldState }) => (
+                <Field
+                  data-invalid={fieldState.invalid}
+                  className="sm:col-span-2"
+                >
+                  <FieldLabel htmlFor="dueDate">Due date</FieldLabel>
+                  <Input
+                    id="dueDate"
+                    type="date"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+          </FieldGroup>
+
+          <DialogFooter className="mt-4">
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? "Saving…" : "Generate invoice"}
             </Button>
           </DialogFooter>
         </form>

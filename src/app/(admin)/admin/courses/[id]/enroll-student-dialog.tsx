@@ -1,9 +1,12 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -22,8 +25,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { initialActionState } from "@/lib/form";
-import { enrollStudentAction } from "../actions";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  studentId: z.string().min(1, "Please select a student."),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function EnrollStudentDialog({
   courseId,
@@ -34,20 +42,23 @@ export function EnrollStudentDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(
-    enrollStudentAction,
-    initialActionState,
-  );
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { studentId: "" },
+  });
+  const enroll = trpc.courses.enroll.useMutation();
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  async function onSubmit(values: FormValues) {
+    try {
+      await enroll.mutateAsync({ courseId, studentId: values.studentId });
+      toast.success("Student enrolled.");
       setOpen(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -68,26 +79,40 @@ export function EnrollStudentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="space-y-4">
-          <input type="hidden" name="courseId" value={courseId} />
-          <div className="space-y-2">
-            <Label>Student</Label>
-            <Select name="studentId">
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a student" />
-              </SelectTrigger>
-              <SelectContent>
-                {students.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={pending || students.length === 0}>
-              {pending ? "Enrolling…" : "Enroll"}
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <Controller
+            control={control}
+            name="studentId"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel>Student</FieldLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger
+                    className="w-full"
+                    aria-invalid={fieldState.invalid}
+                  >
+                    <SelectValue placeholder="Select a student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {students.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
+          />
+          <DialogFooter className="mt-4">
+            <Button
+              type="submit"
+              disabled={enroll.isPending || students.length === 0}
+            >
+              {enroll.isPending ? "Enrolling…" : "Enroll"}
             </Button>
           </DialogFooter>
         </form>

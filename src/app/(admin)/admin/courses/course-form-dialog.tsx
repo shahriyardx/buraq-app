@@ -1,8 +1,11 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,8 +16,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,7 +31,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { type ActionState, initialActionState } from "@/lib/form";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  name: z.string().min(2, "Name is required"),
+  description: z.string().optional(),
+  level: z.string().optional(),
+  instructor: z.string().optional(),
+  durationWeeks: z.string().optional(),
+  price: z
+    .string()
+    .refine((v) => v.trim() !== "" && Number(v) >= 0, "Price must be positive"),
+  maxStudents: z.string().optional(),
+  schedule: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export type CourseFormValues = {
   id: string;
@@ -37,16 +60,21 @@ export type CourseFormValues = {
   schedule: string | null;
 };
 
+function toInt(v?: string) {
+  const t = v?.trim();
+  if (!t) return null;
+  const n = Number.parseInt(t, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 export function CourseFormDialog({
   mode,
-  action,
   course,
   trigger,
   open: controlledOpen,
   onOpenChange,
 }: {
   mode: "create" | "edit";
-  action: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   course?: CourseFormValues;
   trigger?: React.ReactNode;
   open?: boolean;
@@ -56,20 +84,54 @@ export function CourseFormDialog({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialActionState,
-  );
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: course?.name ?? "",
+      description: course?.description ?? "",
+      level: course?.level ?? undefined,
+      instructor: course?.instructor ?? "",
+      durationWeeks:
+        course?.durationWeeks != null ? String(course.durationWeeks) : "",
+      price: course?.price ?? "0",
+      maxStudents:
+        course?.maxStudents != null ? String(course.maxStudents) : "",
+      schedule: course?.schedule ?? "",
+    },
+  });
+
+  const create = trpc.courses.create.useMutation();
+  const update = trpc.courses.update.useMutation();
+  const pending = create.isPending || update.isPending;
+
+  async function onSubmit(values: FormValues) {
+    const payload = {
+      name: values.name,
+      description: values.description || null,
+      level: values.level || null,
+      instructor: values.instructor || null,
+      durationWeeks: toInt(values.durationWeeks),
+      price: Number(values.price),
+      maxStudents: toInt(values.maxStudents),
+      schedule: values.schedule || null,
+    };
+
+    try {
+      if (mode === "create") {
+        await create.mutateAsync(payload);
+        toast.success(`Course ${values.name} created.`);
+      } else if (course) {
+        await update.mutateAsync({ id: course.id, ...payload });
+        toast.success("Course updated.");
+      }
       setOpen(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router, setOpen]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -86,91 +148,136 @@ export function CourseFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="name">Course name</Label>
-              <Input
-                id="name"
-                name="name"
-                defaultValue={course?.name}
-                required
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                name="description"
-                defaultValue={course?.description ?? ""}
-                rows={2}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Level</Label>
-              <Select name="level" defaultValue={course?.level ?? undefined}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Beginner">Beginner</SelectItem>
-                  <SelectItem value="Intermediate">Intermediate</SelectItem>
-                  <SelectItem value="Advanced">Advanced</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="instructor">Instructor</Label>
-              <Input
-                id="instructor"
-                name="instructor"
-                defaultValue={course?.instructor ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="durationWeeks">Duration (weeks)</Label>
-              <Input
-                id="durationWeeks"
-                name="durationWeeks"
-                type="number"
-                min={0}
-                defaultValue={course?.durationWeeks ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="price">Price</Label>
-              <Input
-                id="price"
-                name="price"
-                type="number"
-                min={0}
-                step="0.01"
-                defaultValue={course?.price ?? "0"}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="maxStudents">Max students</Label>
-              <Input
-                id="maxStudents"
-                name="maxStudents"
-                type="number"
-                min={0}
-                defaultValue={course?.maxStudents ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule">Schedule</Label>
-              <Input
-                id="schedule"
-                name="schedule"
-                defaultValue={course?.schedule ?? ""}
-                placeholder="e.g. Mon & Wed 4pm"
-              />
-            </div>
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup className="sm:grid sm:grid-cols-2 sm:gap-4">
+            <Controller
+              control={control}
+              name="name"
+              render={({ field, fieldState }) => (
+                <Field
+                  data-invalid={fieldState.invalid}
+                  className="sm:col-span-2"
+                >
+                  <FieldLabel htmlFor="name">Course name</FieldLabel>
+                  <Input
+                    id="name"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
 
-          <DialogFooter>
+            <Controller
+              control={control}
+              name="description"
+              render={({ field }) => (
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="description">Description</FieldLabel>
+                  <Textarea id="description" rows={2} {...field} />
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="level"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel>Level</FieldLabel>
+                  <Select
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v || undefined)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Beginner">Beginner</SelectItem>
+                      <SelectItem value="Intermediate">Intermediate</SelectItem>
+                      <SelectItem value="Advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="instructor"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="instructor">Instructor</FieldLabel>
+                  <Input id="instructor" {...field} />
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="durationWeeks"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="durationWeeks">
+                    Duration (weeks)
+                  </FieldLabel>
+                  <Input id="durationWeeks" type="number" min={0} {...field} />
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="price"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="price">Price</FieldLabel>
+                  <Input
+                    id="price"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="maxStudents"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="maxStudents">Max students</FieldLabel>
+                  <Input id="maxStudents" type="number" min={0} {...field} />
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="schedule"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="schedule">Schedule</FieldLabel>
+                  <Input
+                    id="schedule"
+                    placeholder="e.g. Mon & Wed 4pm"
+                    {...field}
+                  />
+                </Field>
+              )}
+            />
+          </FieldGroup>
+
+          <DialogFooter className="mt-4">
             <Button type="submit" disabled={pending}>
               {pending ? "Saving…" : mode === "create" ? "Add course" : "Save"}
             </Button>

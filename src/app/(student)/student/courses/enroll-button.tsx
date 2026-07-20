@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { initialActionState } from "@/lib/form";
-import { requestEnrollmentAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export function EnrollButton({
   courseId,
@@ -25,20 +24,18 @@ export function EnrollButton({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(
-    requestEnrollmentAction,
-    initialActionState,
-  );
+  const request = trpc.courses.requestEnrollment.useMutation();
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  async function onRequest() {
+    try {
+      const res = await request.mutateAsync({ courseId });
+      toast.success(res.message);
       setOpen(false);
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -53,14 +50,15 @@ export function EnrollButton({
             must approve your request before you are added to the course.
           </DialogDescription>
         </DialogHeader>
-        <form action={formAction}>
-          <input type="hidden" name="courseId" value={courseId} />
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Requesting…" : "Send request"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <DialogFooter>
+          <Button
+            type="button"
+            disabled={request.isPending}
+            onClick={onRequest}
+          >
+            {request.isPending ? "Requesting…" : "Send request"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { type Column, DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -21,11 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatCurrency } from "@/lib/format";
-import {
-  createCourseAction,
-  setCourseStatusAction,
-  updateCourseAction,
-} from "./actions";
+import { trpc } from "@/trpc/client";
 import { CourseFormDialog } from "./course-form-dialog";
 
 export type CourseRow = {
@@ -44,7 +40,7 @@ export type CourseRow = {
 
 function RowActions({ course }: { course: CourseRow }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const setStatus = trpc.courses.setStatus.useMutation();
   const [editOpen, setEditOpen] = useState(false);
   const nextStatus = course.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE";
 
@@ -53,7 +49,7 @@ function RowActions({ course }: { course: CourseRow }) {
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button variant="ghost" size="icon" disabled={pending}>
+            <Button variant="ghost" size="icon" disabled={setStatus.isPending}>
               <MoreHorizontal className="size-4" />
             </Button>
           }
@@ -68,17 +64,22 @@ function RowActions({ course }: { course: CourseRow }) {
             <Pencil className="mr-2 size-4" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() =>
-              startTransition(async () => {
-                await setCourseStatusAction(course.id, nextStatus);
+            onClick={async () => {
+              try {
+                await setStatus.mutateAsync({
+                  id: course.id,
+                  status: nextStatus,
+                });
                 toast.success(
                   nextStatus === "ACTIVE"
                     ? "Course activated."
                     : "Course archived.",
                 );
                 router.refresh();
-              })
-            }
+              } catch (err) {
+                toast.error((err as Error).message);
+              }
+            }}
           >
             {nextStatus === "ACTIVE" ? (
               <>
@@ -95,7 +96,6 @@ function RowActions({ course }: { course: CourseRow }) {
 
       <CourseFormDialog
         mode="edit"
-        action={updateCourseAction.bind(null, course.id)}
         open={editOpen}
         onOpenChange={setEditOpen}
         course={{
@@ -184,7 +184,6 @@ export function CoursesTable({ courses }: { courses: CourseRow[] }) {
       toolbar={
         <CourseFormDialog
           mode="create"
-          action={createCourseAction}
           trigger={
             <Button size="sm">
               <Plus className="mr-2 size-4" />

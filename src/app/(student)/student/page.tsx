@@ -20,74 +20,35 @@ import {
 } from "@/components/ui/card";
 import { requireStudent } from "@/lib/dal";
 import { formatDate, formatDateTime, initials } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { AttendanceDonut } from "./student-charts";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function StudentDashboardPage() {
-  const session = await requireStudent();
-  const studentId = session.user.id;
+  await requireStudent();
 
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const weekAhead = new Date(today);
-  weekAhead.setDate(weekAhead.getDate() + 30);
+  const [overview, announcements] = await Promise.all([
+    api.dashboard.overview(),
+    api.announcements.latest(),
+  ]);
 
-  const [student, monthAttendance, activeEnrollment, certCount, announcements] =
-    await Promise.all([
-      prisma.user.findUnique({
-        where: { id: studentId },
-        select: { name: true, photoUrl: true, studentId: true, status: true },
-      }),
-      prisma.attendance.findMany({
-        where: { studentId, date: { gte: monthStart } },
-        select: { status: true },
-      }),
-      prisma.enrollment.findFirst({
-        where: { studentId, status: "ACTIVE" },
-        orderBy: { createdAt: "desc" },
-        include: { course: true },
-      }),
-      prisma.certificate.count({ where: { studentId, status: "VALID" } }),
-      prisma.announcement.findMany({
-        orderBy: { publishedAt: "desc" },
-        take: 3,
-      }),
-    ]);
+  const {
+    student,
+    counts,
+    total,
+    rate,
+    certCount,
+    activeEnrollment,
+    upcoming,
+  } = overview;
 
-  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0 };
-  for (const a of monthAttendance) counts[a.status] += 1;
-  const total = monthAttendance.length;
-  const rate = total ? Math.round((counts.PRESENT / total) * 100) : 0;
   const donutData = [
     { name: "Present", value: counts.PRESENT },
     { name: "Late", value: counts.LATE },
     { name: "Absent", value: counts.ABSENT },
     { name: "Excused", value: counts.EXCUSED },
   ];
-
-  // Upcoming classes for the student's enrolled courses.
-  const enrolledCourseIds = (
-    await prisma.enrollment.findMany({
-      where: { studentId, status: { in: ["ACTIVE", "COMPLETED"] } },
-      select: { courseId: true },
-    })
-  ).map((e) => e.courseId);
-  const upcoming = enrolledCourseIds.length
-    ? await prisma.classSession.findMany({
-        where: {
-          courseId: { in: enrolledCourseIds },
-          date: { gte: today, lte: weekAhead },
-        },
-        orderBy: { date: "asc" },
-        take: 3,
-        include: { course: { select: { name: true } } },
-      })
-    : [];
 
   const quickLinks = [
     { label: "Certificates", href: "/student/certificates", icon: Award },
@@ -146,10 +107,10 @@ export default async function StudentDashboardPage() {
           <CardContent className="space-y-3 p-0 pt-2">
             {activeEnrollment ? (
               <>
-                <p className="font-semibold">{activeEnrollment.course.name}</p>
+                <p className="font-semibold">{activeEnrollment.courseName}</p>
                 <p className="text-sm text-muted-foreground">
-                  {activeEnrollment.course.level ?? ""} ·{" "}
-                  {activeEnrollment.course.instructor ?? "—"}
+                  {activeEnrollment.level ?? ""} ·{" "}
+                  {activeEnrollment.instructor ?? "—"}
                 </p>
                 <div>
                   <div className="mb-1 flex justify-between text-xs text-muted-foreground">
@@ -217,7 +178,7 @@ export default async function StudentDashboardPage() {
                       <CalendarDays className="size-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">{s.course.name}</p>
+                      <p className="text-sm font-medium">{s.courseName}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatDate(s.date)}
                         {s.startTime && ` · ${s.startTime}`}

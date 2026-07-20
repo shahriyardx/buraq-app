@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { requireAdmin } from "@/lib/dal";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { CertificatesTable } from "./certificates-table";
 
 export const metadata: Metadata = { title: "Certificates" };
@@ -10,30 +10,16 @@ export default async function CertificatesPage() {
   await requireAdmin();
 
   const [certificates, students, courses] = await Promise.all([
-    prisma.certificate.findMany({
-      orderBy: { issuedDate: "desc" },
-      include: {
-        student: { select: { name: true } },
-        course: { select: { name: true } },
-      },
-    }),
-    prisma.user.findMany({
-      where: { role: "STUDENT" },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, studentId: true },
-    }),
-    prisma.course.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
+    api.certificates.list(),
+    api.certificates.studentOptions(),
+    api.certificates.courseOptions(),
   ]);
 
   const rows = certificates.map((c) => ({
     id: c.id,
     certificateId: c.certificateId,
-    studentName: c.student.name,
-    courseName: c.course.name,
+    studentName: c.studentName,
+    courseName: c.courseName,
     issuedDate: c.issuedDate.toISOString(),
     status: c.status,
     pdfUrl: c.pdfUrl,

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireAdmin } from "@/lib/dal";
-import { prisma } from "@/lib/prisma";
 import { isR2Configured } from "@/lib/r2";
+import { api } from "@/trpc/server";
 import { AdminsPanel } from "./admins-panel";
 import { AuditLog } from "./audit-log";
 import { CertificateTemplateForm } from "./certificate-template-form";
@@ -13,65 +13,12 @@ import { ThresholdForm } from "./threshold-form";
 
 export const metadata: Metadata = { title: "Settings" };
 
-const TEMPLATE_ORDER = [
-  "ENROLLMENT",
-  "INVOICE",
-  "CERTIFICATE",
-  "SUPPORT",
-] as const;
-
 export default async function SettingsPage() {
   const session = await requireAdmin();
+  const data = await api.settings.get();
+  const r2Configured = isR2Configured();
 
-  const [settings, certTemplate, emailTemplates, admins, auditLogs] =
-    await Promise.all([
-      prisma.schoolSettings.findUnique({ where: { id: "singleton" } }),
-      prisma.certificateTemplate.findUnique({ where: { id: "singleton" } }),
-      prisma.emailTemplate.findMany(),
-      prisma.user.findMany({
-        where: { role: "ADMIN" },
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
-          createdAt: true,
-        },
-      }),
-      prisma.auditLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 200,
-      }),
-    ]);
-
-  const profile = {
-    name: settings?.name ?? "Buraq Horse Riding School",
-    logoUrl: settings?.logoUrl ?? null,
-    address: settings?.address ?? null,
-    phone: settings?.phone ?? null,
-    email: settings?.email ?? null,
-    officeHours: settings?.officeHours ?? null,
-  };
-
-  const byKey = new Map(emailTemplates.map((t) => [t.key, t]));
-  const templates = TEMPLATE_ORDER.map((key) => {
-    const t = byKey.get(key);
-    return {
-      key,
-      subject: t?.subject ?? "",
-      body: t?.body ?? "",
-    };
-  });
-
-  const certificate = {
-    signatureName: certTemplate?.signatureName ?? null,
-    logoUrl: certTemplate?.logoUrl ?? null,
-    signatureUrl: certTemplate?.signatureUrl ?? null,
-    designUrl: certTemplate?.designUrl ?? null,
-  };
-
-  const adminRows = admins.map((a) => ({
+  const adminRows = data.admins.map((a) => ({
     id: a.id,
     name: a.name,
     email: a.email,
@@ -79,7 +26,7 @@ export default async function SettingsPage() {
     createdAt: a.createdAt.toISOString(),
   }));
 
-  const auditRows = auditLogs.map((l) => ({
+  const auditRows = data.auditLogs.map((l) => ({
     id: l.id,
     actorName: l.actorName,
     action: l.action,
@@ -88,8 +35,6 @@ export default async function SettingsPage() {
     ip: l.ip,
     createdAt: l.createdAt.toISOString(),
   }));
-
-  const r2Configured = isR2Configured();
 
   return (
     <>
@@ -108,10 +53,11 @@ export default async function SettingsPage() {
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
-          <SchoolProfileForm settings={profile} r2Configured={r2Configured} />
-          <ThresholdForm
-            attendanceThreshold={settings?.attendanceThreshold ?? 75}
+          <SchoolProfileForm
+            settings={data.profile}
+            r2Configured={r2Configured}
           />
+          <ThresholdForm attendanceThreshold={data.attendanceThreshold} />
         </TabsContent>
 
         <TabsContent value="admins">
@@ -119,12 +65,12 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="email">
-          <EmailTemplatesForm templates={templates} />
+          <EmailTemplatesForm templates={data.templates} />
         </TabsContent>
 
         <TabsContent value="certificate">
           <CertificateTemplateForm
-            template={certificate}
+            template={data.certificate}
             r2Configured={r2Configured}
           />
         </TabsContent>

@@ -2,7 +2,7 @@ import { BadgeCheck, Download, ShieldAlert, ShieldX } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { formatDate } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 
 export const metadata: Metadata = { title: "Certificate Verification" };
 
@@ -34,21 +34,10 @@ export default async function VerifyCertificatePage({
 }: PageProps<"/verify/[certificateId]">) {
   const { certificateId } = await params;
 
-  const certificate = await prisma.certificate.findUnique({
-    where: { certificateId },
-    include: {
-      student: { select: { name: true } },
-      course: { select: { name: true, level: true } },
-    },
-  });
+  const result = await api.certificates.verify({ certificateId });
+  const schoolName = result.schoolName;
 
-  const settings = await prisma.schoolSettings.findUnique({
-    where: { id: "singleton" },
-    select: { name: true },
-  });
-  const schoolName = settings?.name ?? "Buraq Horse Riding School";
-
-  if (!certificate) {
+  if (result.status === "INVALID") {
     return (
       <Shell>
         <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
@@ -70,7 +59,7 @@ export default async function VerifyCertificatePage({
     );
   }
 
-  const isRevoked = certificate.status === "REVOKED";
+  const isRevoked = result.status === "REVOKED";
 
   return (
     <Shell>
@@ -94,10 +83,10 @@ export default async function VerifyCertificatePage({
               <p className="mt-2 text-sm text-muted-foreground">
                 This certificate is no longer valid.
               </p>
-              {certificate.revokedReason && (
+              {result.revokedReason && (
                 <p className="mx-auto mt-4 max-w-sm rounded-lg bg-muted px-4 py-3 text-sm">
                   <span className="font-medium">Reason:</span>{" "}
-                  {certificate.revokedReason}
+                  {result.revokedReason}
                 </p>
               )}
             </div>
@@ -116,33 +105,30 @@ export default async function VerifyCertificatePage({
           )}
 
           <div className="mt-8">
-            <DetailRow label="Student" value={certificate.student.name} />
+            <DetailRow label="Student" value={result.studentName} />
             <DetailRow
               label="Course"
               value={
-                certificate.course.level
-                  ? `${certificate.course.name} (${certificate.course.level})`
-                  : certificate.course.name
+                result.courseLevel
+                  ? `${result.courseName} (${result.courseLevel})`
+                  : result.courseName
               }
             />
             <DetailRow
               label="Certificate ID"
               value={
                 <span className="font-mono text-xs">
-                  {certificate.certificateId}
+                  {result.certificateId}
                 </span>
               }
             />
-            <DetailRow
-              label="Issued"
-              value={formatDate(certificate.issuedDate)}
-            />
+            <DetailRow label="Issued" value={formatDate(result.issuedDate)} />
           </div>
 
-          {!isRevoked && certificate.pdfUrl && (
+          {!isRevoked && result.pdfUrl && (
             <div className="mt-6 flex justify-center">
               <Link
-                href={certificate.pdfUrl}
+                href={result.pdfUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"

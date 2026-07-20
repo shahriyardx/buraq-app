@@ -1,21 +1,43 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/form";
-import { updateEmailTemplateAction } from "./actions";
+import { trpc } from "@/trpc/client";
+
+const TEMPLATE_KEYS = [
+  "ENROLLMENT",
+  "INVOICE",
+  "CERTIFICATE",
+  "SUPPORT",
+] as const;
+
+type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
 export type EmailTemplateValues = {
-  key: string;
+  key: TemplateKey;
   subject: string;
   body: string;
 };
+
+const schema = z.object({
+  subject: z.string().min(1, "Subject is required"),
+  body: z.string().min(1, "Body is required"),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 const LABELS: Record<string, string> = {
   ENROLLMENT: "Enrollment confirmation",
@@ -26,51 +48,77 @@ const LABELS: Record<string, string> = {
 
 function TemplateCard({ template }: { template: EmailTemplateValues }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    updateEmailTemplateAction,
-    initialActionState,
-  );
+  const { control, handleSubmit } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { subject: template.subject, body: template.body },
+  });
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const update = trpc.settings.updateEmailTemplate.useMutation();
+
+  async function onSubmit(values: FormValues) {
+    try {
+      await update.mutateAsync({
+        key: template.key,
+        subject: values.subject,
+        body: values.body,
+      });
+      toast.success(`${template.key} template saved.`);
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Card className="p-6">
-      <form action={formAction} className="space-y-4">
-        <input type="hidden" name="key" value={template.key} />
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <h3 className="font-medium">
             {LABELS[template.key] ?? template.key}
           </h3>
           <p className="text-xs text-muted-foreground">{template.key}</p>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor={`subject-${template.key}`}>Subject</Label>
-          <Input
-            id={`subject-${template.key}`}
+        <FieldGroup>
+          <Controller
+            control={control}
             name="subject"
-            defaultValue={template.subject}
-            required
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor={`subject-${template.key}`}>
+                  Subject
+                </FieldLabel>
+                <Input
+                  id={`subject-${template.key}`}
+                  aria-invalid={fieldState.invalid}
+                  {...field}
+                />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={`body-${template.key}`}>Body</Label>
-          <Textarea
-            id={`body-${template.key}`}
+          <Controller
+            control={control}
             name="body"
-            defaultValue={template.body}
-            rows={6}
-            required
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor={`body-${template.key}`}>Body</FieldLabel>
+                <Textarea
+                  id={`body-${template.key}`}
+                  rows={6}
+                  aria-invalid={fieldState.invalid}
+                  {...field}
+                />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
           />
-        </div>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save template"}
+        </FieldGroup>
+        <Button type="submit" disabled={update.isPending}>
+          {update.isPending ? "Saving…" : "Save template"}
         </Button>
       </form>
     </Card>

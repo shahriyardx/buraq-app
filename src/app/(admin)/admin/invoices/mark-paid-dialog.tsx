@@ -1,8 +1,10 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,8 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -21,9 +28,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { initialActionState } from "@/lib/form";
 import { toDateInput } from "@/lib/format";
-import { markPaidAction } from "./actions";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  paidDate: z.string().min(1, "Payment date is required"),
+  paymentMethod: z.enum(["CASH", "BANK", "ONLINE"]),
+  reference: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function MarkPaidDialog({
   invoiceId,
@@ -37,21 +51,34 @@ export function MarkPaidDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const action = markPaidAction.bind(null, invoiceId);
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialActionState,
-  );
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      paidDate: toDateInput(new Date()),
+      paymentMethod: "CASH",
+      reference: "",
+    },
+  });
+
+  const markPaid = trpc.invoices.markPaid.useMutation();
+
+  async function onSubmit(values: FormValues) {
+    try {
+      const res = await markPaid.mutateAsync({
+        id: invoiceId,
+        paidDate: values.paidDate,
+        paymentMethod: values.paymentMethod,
+        reference: values.reference || null,
+      });
+      toast.success(`Invoice ${res.invoiceNumber} marked paid.`);
       onOpenChange(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router, onOpenChange]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -63,42 +90,66 @@ export function MarkPaidDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="paidDate">Payment date</Label>
-            <Input
-              id="paidDate"
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup>
+            <Controller
+              control={control}
               name="paidDate"
-              type="date"
-              defaultValue={toDateInput(new Date())}
-              required
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="paidDate">Payment date</FieldLabel>
+                  <Input
+                    id="paidDate"
+                    type="date"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label>Payment method</Label>
-            <Select name="paymentMethod" defaultValue="CASH" required>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CASH">Cash</SelectItem>
-                <SelectItem value="BANK">Bank transfer</SelectItem>
-                <SelectItem value="ONLINE">Online</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="reference">Reference</Label>
-            <Input
-              id="reference"
-              name="reference"
-              placeholder="Transaction / receipt no."
-            />
-          </div>
 
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Mark paid"}
+            <Controller
+              control={control}
+              name="paymentMethod"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel>Payment method</FieldLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash</SelectItem>
+                      <SelectItem value="BANK">Bank transfer</SelectItem>
+                      <SelectItem value="ONLINE">Online</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="reference"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="reference">Reference</FieldLabel>
+                  <Input
+                    id="reference"
+                    placeholder="Transaction / receipt no."
+                    {...field}
+                  />
+                </Field>
+              )}
+            />
+          </FieldGroup>
+
+          <DialogFooter className="mt-4">
+            <Button type="submit" disabled={markPaid.isPending}>
+              {markPaid.isPending ? "Saving…" : "Mark paid"}
             </Button>
           </DialogFooter>
         </form>

@@ -1,9 +1,12 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { type Column, DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -17,11 +20,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { initialActionState } from "@/lib/form";
 import { formatDate, initials } from "@/lib/format";
-import { addAdminAction, removeAdminAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export type AdminRow = {
   id: string;
@@ -31,23 +38,35 @@ export type AdminRow = {
   createdAt: string;
 };
 
+const schema = z.object({
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Valid email required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+type FormValues = z.infer<typeof schema>;
+
 function AddAdminDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(
-    addAdminAction,
-    initialActionState,
-  );
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: "", email: "", password: "Admin@12345" },
+  });
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const add = trpc.settings.addAdmin.useMutation();
+
+  async function onSubmit(values: FormValues) {
+    try {
+      const admin = await add.mutateAsync(values);
+      toast.success(`Admin ${admin.name} added.`);
       setOpen(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -67,28 +86,66 @@ function AddAdminDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="admin-name">Full name</Label>
-            <Input id="admin-name" name="name" required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-email">Email</Label>
-            <Input id="admin-email" name="email" type="email" required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-password">Temp password</Label>
-            <Input
-              id="admin-password"
-              name="password"
-              type="text"
-              defaultValue="Admin@12345"
-              required
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup>
+            <Controller
+              control={control}
+              name="name"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="admin-name">Full name</FieldLabel>
+                  <Input
+                    id="admin-name"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
             />
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Adding…" : "Add admin"}
+            <Controller
+              control={control}
+              name="email"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="admin-email">Email</FieldLabel>
+                  <Input
+                    id="admin-email"
+                    type="email"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+            <Controller
+              control={control}
+              name="password"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="admin-password">
+                    Temp password
+                  </FieldLabel>
+                  <Input
+                    id="admin-password"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+          </FieldGroup>
+          <DialogFooter className="mt-4">
+            <Button type="submit" disabled={add.isPending}>
+              {add.isPending ? "Adding…" : "Add admin"}
             </Button>
           </DialogFooter>
         </form>
@@ -99,7 +156,7 @@ function AddAdminDialog() {
 
 function RemoveButton({ admin, isSelf }: { admin: AdminRow; isSelf: boolean }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const remove = trpc.settings.removeAdmin.useMutation();
 
   if (admin.status === "INACTIVE") {
     return <span className="text-xs text-muted-foreground">Removed</span>;
@@ -109,19 +166,17 @@ function RemoveButton({ admin, isSelf }: { admin: AdminRow; isSelf: boolean }) {
     <Button
       variant="ghost"
       size="icon"
-      disabled={isSelf || pending}
+      disabled={isSelf || remove.isPending}
       title={isSelf ? "You cannot remove yourself" : "Remove admin"}
-      onClick={() =>
-        startTransition(async () => {
-          try {
-            await removeAdminAction(admin.id);
-            toast.success("Admin removed.");
-            router.refresh();
-          } catch (err) {
-            toast.error((err as Error).message);
-          }
-        })
-      }
+      onClick={async () => {
+        try {
+          await remove.mutateAsync({ userId: admin.id });
+          toast.success("Admin removed.");
+          router.refresh();
+        } catch (err) {
+          toast.error((err as Error).message);
+        }
+      }}
     >
       <Trash2 className="size-4" />
     </Button>

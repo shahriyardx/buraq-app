@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { Pencil } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -16,8 +17,7 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
-import { updateCourseAction } from "../actions";
+import { api } from "@/trpc/server";
 import { CourseFormDialog } from "../course-form-dialog";
 import { EnrollStudentDialog } from "./enroll-student-dialog";
 
@@ -29,25 +29,12 @@ export default async function CourseDetailPage({
   await requireAdmin();
   const { id } = await params;
 
-  const course = await prisma.course.findUnique({
-    where: { id },
-    include: {
-      enrollments: {
-        include: { student: true },
-        orderBy: { createdAt: "desc" },
-      },
-    },
+  const course = await api.courses.get({ id }).catch((err) => {
+    if (err instanceof TRPCError && err.code === "NOT_FOUND") notFound();
+    throw err;
   });
 
-  if (!course) notFound();
-
-  const enrolledIds = new Set(course.enrollments.map((e) => e.studentId));
-  const students = await prisma.user.findMany({
-    where: { role: "STUDENT", status: "ACTIVE" },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
-  const available = students.filter((s) => !enrolledIds.has(s.id));
+  const available = course.available;
 
   const info: [string, string][] = [
     ["Level", course.level ?? "—"],
@@ -74,14 +61,13 @@ export default async function CourseDetailPage({
         <StatusBadge status={course.status} />
         <CourseFormDialog
           mode="edit"
-          action={updateCourseAction.bind(null, course.id)}
           course={{
             id: course.id,
             name: course.name,
             description: course.description,
             level: course.level,
             durationWeeks: course.durationWeeks,
-            price: course.price.toString(),
+            price: course.price,
             maxStudents: course.maxStudents,
             instructor: course.instructor,
             schedule: course.schedule,
@@ -137,10 +123,10 @@ export default async function CourseDetailPage({
                     <TableRow key={e.id}>
                       <TableCell className="font-medium">
                         <Link
-                          href={`/admin/students/${e.student.id}`}
+                          href={`/admin/students/${e.studentId}`}
                           className="hover:underline"
                         >
-                          {e.student.name}
+                          {e.studentName}
                         </Link>
                       </TableCell>
                       <TableCell>{e.progress}%</TableCell>

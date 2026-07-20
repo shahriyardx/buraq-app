@@ -1,14 +1,17 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { initialActionState } from "@/lib/form";
-import { updateCertificateTemplateAction } from "./actions";
+import { uploadFile } from "@/lib/upload-client";
+import { trpc } from "@/trpc/client";
 
 export type CertificateTemplateValues = {
   signatureName: string | null;
@@ -16,6 +19,12 @@ export type CertificateTemplateValues = {
   signatureUrl: string | null;
   designUrl: string | null;
 };
+
+const schema = z.object({
+  signatureName: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 function AssetPreview({ url, alt }: { url: string | null; alt: string }) {
   if (!url) return null;
@@ -33,32 +42,69 @@ export function CertificateTemplateForm({
   r2Configured: boolean;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    updateCertificateTemplateAction,
-    initialActionState,
-  );
+  const [logo, setLogo] = useState<File | null>(null);
+  const [signature, setSignature] = useState<File | null>(null);
+  const [design, setDesign] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { signatureName: template.signatureName ?? "" },
+  });
+
+  const update = trpc.settings.updateCertificateTemplate.useMutation();
+  const pending = update.isPending || uploading;
+
+  async function onSubmit(values: FormValues) {
+    try {
+      let logoUrl: string | undefined;
+      let signatureUrl: string | undefined;
+      let designUrl: string | undefined;
+      if (r2Configured && (logo || signature || design)) {
+        setUploading(true);
+        if (logo) logoUrl = await uploadFile(logo, "certificates");
+        if (signature)
+          signatureUrl = await uploadFile(signature, "certificates");
+        if (design) designUrl = await uploadFile(design, "certificates");
+        setUploading(false);
+      }
+
+      await update.mutateAsync({
+        signatureName: values.signatureName || null,
+        logoUrl,
+        signatureUrl,
+        designUrl,
+      });
+      toast.success("Certificate template saved.");
+      setLogo(null);
+      setSignature(null);
+      setDesign(null);
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      setUploading(false);
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Card className="p-6">
-      <form action={formAction} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="signatureName">Signatory name</Label>
-          <Input
-            id="signatureName"
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FieldGroup>
+          <Controller
+            control={control}
             name="signatureName"
-            defaultValue={template.signatureName ?? ""}
-            placeholder="Head of School"
+            render={({ field }) => (
+              <Field>
+                <FieldLabel htmlFor="signatureName">Signatory name</FieldLabel>
+                <Input
+                  id="signatureName"
+                  placeholder="Head of School"
+                  {...field}
+                />
+              </Field>
+            )}
           />
-        </div>
+        </FieldGroup>
 
         {!r2Configured && (
           <p className="text-xs text-muted-foreground">
@@ -67,39 +113,39 @@ export function CertificateTemplateForm({
         )}
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-2">
-            <Label htmlFor="logo">Logo</Label>
+          <Field>
+            <FieldLabel htmlFor="logo">Logo</FieldLabel>
             <AssetPreview url={template.logoUrl} alt="Certificate logo" />
             <Input
               id="logo"
-              name="logo"
               type="file"
               accept="image/*"
               disabled={!r2Configured}
+              onChange={(e) => setLogo(e.target.files?.[0] ?? null)}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="signature">Signature</Label>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="signature">Signature</FieldLabel>
             <AssetPreview url={template.signatureUrl} alt="Signature" />
             <Input
               id="signature"
-              name="signature"
               type="file"
               accept="image/*"
               disabled={!r2Configured}
+              onChange={(e) => setSignature(e.target.files?.[0] ?? null)}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="design">Background design</Label>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="design">Background design</FieldLabel>
             <AssetPreview url={template.designUrl} alt="Design" />
             <Input
               id="design"
-              name="design"
               type="file"
               accept="image/*"
               disabled={!r2Configured}
+              onChange={(e) => setDesign(e.target.files?.[0] ?? null)}
             />
-          </div>
+          </Field>
         </div>
 
         <Button type="submit" disabled={pending}>

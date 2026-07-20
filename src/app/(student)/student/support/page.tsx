@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireStudent } from "@/lib/dal";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { SubmitTicketDialog } from "./submit-ticket-dialog";
 
 export const metadata: Metadata = { title: "Contact Support" };
@@ -22,23 +22,18 @@ function categoryLabel(value: string) {
 }
 
 export default async function StudentSupportPage() {
-  const session = await requireStudent();
-  const studentId = session.user.id;
+  await requireStudent();
 
   const [tickets, school] = await Promise.all([
-    prisma.supportTicket.findMany({
-      where: { studentId },
-      orderBy: { createdAt: "desc" },
-      include: { _count: { select: { messages: true } } },
-    }),
-    prisma.schoolSettings.findUnique({ where: { id: "singleton" } }),
+    api.support.myList(),
+    api.support.schoolInfo(),
   ]);
 
   const info = [
-    { icon: Phone, label: "Phone", value: school?.phone },
-    { icon: Mail, label: "Email", value: school?.email },
-    { icon: MapPin, label: "Address", value: school?.address },
-    { icon: Clock, label: "Office hours", value: school?.officeHours },
+    { icon: Phone, label: "Phone", value: school.phone },
+    { icon: Mail, label: "Email", value: school.email },
+    { icon: MapPin, label: "Address", value: school.address },
+    { icon: Clock, label: "Office hours", value: school.officeHours },
   ].filter((i) => i.value);
 
   return (
@@ -80,8 +75,8 @@ export default async function StudentSupportPage() {
                       </div>
                       <p className="truncate font-medium">{t.subject}</p>
                       <p className="text-xs text-muted-foreground">
-                        {categoryLabel(t.category)} · {t._count.messages}{" "}
-                        {t._count.messages === 1 ? "message" : "messages"}
+                        {categoryLabel(t.category)} · {t.messagesCount}{" "}
+                        {t.messagesCount === 1 ? "message" : "messages"}
                       </p>
                     </div>
                     <Button

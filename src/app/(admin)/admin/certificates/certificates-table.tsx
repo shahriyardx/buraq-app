@@ -1,10 +1,13 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Ban, Copy, Download, MoreHorizontal, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { type Column, DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -32,9 +35,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/form";
 import { formatDate } from "@/lib/format";
-import { revokeCertificateAction } from "./actions";
+import { trpc } from "@/trpc/client";
 import { CertificateFormDialog } from "./certificate-form-dialog";
 
 export type CertificateRow = {
@@ -58,21 +60,30 @@ function RevokeDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const action = revokeCertificateAction.bind(null, certificate.certificateId);
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialActionState,
-  );
+  const { control, handleSubmit, reset } = useForm<{ reason: string }>({
+    resolver: zodResolver(
+      z.object({
+        reason: z.string().min(1, "A revocation reason is required."),
+      }),
+    ),
+    defaultValues: { reason: "" },
+  });
+  const revoke = trpc.certificates.revoke.useMutation();
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  async function onSubmit(values: { reason: string }) {
+    try {
+      await revoke.mutateAsync({
+        certificateId: certificate.certificateId,
+        reason: values.reason,
+      });
+      toast.success(`Certificate ${certificate.certificateId} revoked.`);
       onOpenChange(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router, onOpenChange]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -84,20 +95,33 @@ function RevokeDialog({
             will show it as revoked with the reason below.
           </DialogDescription>
         </DialogHeader>
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="reason">Reason</Label>
-            <Textarea
-              id="reason"
-              name="reason"
-              rows={3}
-              placeholder="e.g. Issued in error, course not completed."
-              required
-            />
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <Controller
+            control={control}
+            name="reason"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor="reason">Reason</FieldLabel>
+                <Textarea
+                  id="reason"
+                  rows={3}
+                  placeholder="e.g. Issued in error, course not completed."
+                  aria-invalid={fieldState.invalid}
+                  {...field}
+                />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
+          />
           <DialogFooter>
-            <Button type="submit" variant="destructive" disabled={pending}>
-              {pending ? "Revoking…" : "Revoke certificate"}
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={revoke.isPending}
+            >
+              {revoke.isPending ? "Revoking…" : "Revoke certificate"}
             </Button>
           </DialogFooter>
         </form>

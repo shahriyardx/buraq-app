@@ -1,9 +1,12 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,8 +17,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,8 +32,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/form";
-import { submitTicketAction } from "./actions";
+import { uploadFile } from "@/lib/upload-client";
+import { trpc } from "@/trpc/client";
 
 const CATEGORIES = [
   { value: "GENERAL", label: "General" },
@@ -33,25 +41,55 @@ const CATEGORIES = [
   { value: "COURSES", label: "Courses" },
   { value: "TECHNICAL", label: "Technical" },
   { value: "OTHER", label: "Other" },
-];
+] as const;
+
+const schema = z.object({
+  subject: z.string().min(1, "Subject is required"),
+  category: z.enum(["GENERAL", "BILLING", "COURSES", "TECHNICAL", "OTHER"]),
+  message: z.string().min(1, "Message cannot be empty"),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function SubmitTicketDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(
-    submitTicketAction,
-    initialActionState,
-  );
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { subject: "", category: "GENERAL", message: "" },
+  });
+
+  const submit = trpc.support.submit.useMutation();
+  const pending = submit.isPending || uploading;
+
+  async function onSubmit(values: FormValues) {
+    try {
+      let attachmentUrl: string | undefined;
+      if (attachment) {
+        setUploading(true);
+        attachmentUrl = await uploadFile(attachment, "tickets");
+        setUploading(false);
+      }
+
+      await submit.mutateAsync({
+        subject: values.subject,
+        category: values.category,
+        message: values.message,
+        attachmentUrl,
+      });
+      toast.success("Ticket submitted.");
       setOpen(false);
+      setAttachment(null);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      setUploading(false);
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -70,36 +108,81 @@ export function SubmitTicketDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="subject">Subject</Label>
-            <Input id="subject" name="subject" required />
-          </div>
-          <div className="space-y-2">
-            <Label>Category</Label>
-            <Select name="category" defaultValue="GENERAL">
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="message">Message</Label>
-            <Textarea id="message" name="message" rows={5} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="attachment">Attachment</Label>
-            <Input id="attachment" name="attachment" type="file" />
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup>
+            <Controller
+              control={control}
+              name="subject"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="subject">Subject</FieldLabel>
+                  <Input
+                    id="subject"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
 
-          <DialogFooter>
+            <Controller
+              control={control}
+              name="category"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel>Category</FieldLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="message"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="message">Message</FieldLabel>
+                  <Textarea
+                    id="message"
+                    rows={5}
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+
+            <Field>
+              <FieldLabel htmlFor="attachment">Attachment</FieldLabel>
+              <Input
+                id="attachment"
+                type="file"
+                onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+              />
+            </Field>
+          </FieldGroup>
+
+          <DialogFooter className="mt-4">
             <Button type="submit" disabled={pending}>
               {pending ? "Submitting…" : "Submit ticket"}
             </Button>

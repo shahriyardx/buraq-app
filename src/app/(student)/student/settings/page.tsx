@@ -3,8 +3,8 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireStudent } from "@/lib/dal";
-import { prisma } from "@/lib/prisma";
 import { isR2Configured } from "@/lib/r2";
+import { api } from "@/trpc/server";
 import { ChangePasswordForm } from "./change-password-form";
 import { NotificationsForm } from "./notifications-form";
 import { ProfileForm } from "./profile-form";
@@ -12,28 +12,16 @@ import { ProfileForm } from "./profile-form";
 export const metadata: Metadata = { title: "Account Settings" };
 
 export default async function StudentSettingsPage() {
-  const session = await requireStudent();
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      name: true,
-      email: true,
-      studentId: true,
-      phone: true,
-      address: true,
-      photoUrl: true,
-      emailNotifications: true,
-    },
-  });
+  await requireStudent();
+  const account = await api.account.me();
 
   const profile = {
-    name: user?.name ?? "",
-    email: user?.email ?? "",
-    studentId: user?.studentId ?? null,
-    phone: user?.phone ?? null,
-    address: user?.address ?? null,
-    photoUrl: user?.photoUrl ?? null,
+    name: account.name,
+    email: account.email,
+    studentId: account.studentId,
+    phone: account.phone,
+    address: account.address,
+    photoUrl: account.photoUrl,
   };
 
   return (
@@ -79,7 +67,7 @@ export default async function StudentSettingsPage() {
             </CardHeader>
             <CardContent className="p-0 pt-4">
               <NotificationsForm
-                emailNotifications={user?.emailNotifications ?? true}
+                emailNotifications={account.emailNotifications}
               />
             </CardContent>
           </Card>

@@ -1,37 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
+const schema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(8, "New password must be at least 8 characters"),
+    confirmPassword: z.string().min(1, "Please confirm your new password"),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    message: "New passwords do not match.",
+    path: ["confirmPassword"],
+  });
+
+type FormValues = z.infer<typeof schema>;
+
 export function ChangePasswordForm() {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [pending, setPending] = useState(false);
+  const { control, handleSubmit, reset, formState } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords do not match.");
-      return;
-    }
-
-    setPending(true);
+  async function onSubmit(values: FormValues) {
     // better-auth verifies the current password server-side.
     const { error } = await authClient.changePassword({
-      currentPassword,
-      newPassword,
+      currentPassword: values.currentPassword,
+      newPassword: values.newPassword,
       revokeOtherSessions: true,
     });
-    setPending(false);
 
     if (error) {
       toast.error(error.message ?? "Could not change password.");
@@ -39,51 +53,73 @@ export function ChangePasswordForm() {
     }
 
     toast.success("Password changed.");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    reset();
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="currentPassword">Current password</Label>
-        <Input
-          id="currentPassword"
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <FieldGroup className="space-y-4">
+        <Controller
+          control={control}
           name="currentPassword"
-          type="password"
-          autoComplete="current-password"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-          required
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="currentPassword">
+                Current password
+              </FieldLabel>
+              <Input
+                id="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                aria-invalid={fieldState.invalid}
+                {...field}
+              />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
         />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="newPassword">New password</Label>
-        <Input
-          id="newPassword"
+
+        <Controller
+          control={control}
           name="newPassword"
-          type="password"
-          autoComplete="new-password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          required
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="newPassword">New password</FieldLabel>
+              <Input
+                id="newPassword"
+                type="password"
+                autoComplete="new-password"
+                aria-invalid={fieldState.invalid}
+                {...field}
+              />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
         />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="confirmPassword">Confirm new password</Label>
-        <Input
-          id="confirmPassword"
+
+        <Controller
+          control={control}
           name="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="confirmPassword">
+                Confirm new password
+              </FieldLabel>
+              <Input
+                id="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                aria-invalid={fieldState.invalid}
+                {...field}
+              />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
         />
-      </div>
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Change password"}
+      </FieldGroup>
+
+      <Button type="submit" disabled={formState.isSubmitting}>
+        {formState.isSubmitting ? "Saving…" : "Change password"}
       </Button>
     </form>
   );

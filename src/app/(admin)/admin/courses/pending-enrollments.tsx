@@ -2,23 +2,24 @@
 
 import { Check, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
-import { approveEnrollmentAction, rejectEnrollmentAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export type PendingEnrollment = {
   id: string;
   studentName: string;
   courseName: string;
-  requestedAt: string;
+  requestedAt: Date;
 };
 
 export function PendingEnrollments({ items }: { items: PendingEnrollment[] }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const approve = trpc.courses.approveEnrollment.useMutation();
+  const reject = trpc.courses.rejectEnrollment.useMutation();
+  const pending = approve.isPending || reject.isPending;
 
   if (items.length === 0) return null;
 
@@ -44,13 +45,15 @@ export function PendingEnrollments({ items }: { items: PendingEnrollment[] }) {
               <Button
                 size="sm"
                 disabled={pending}
-                onClick={() =>
-                  start(async () => {
-                    await approveEnrollmentAction(e.id);
+                onClick={async () => {
+                  try {
+                    await approve.mutateAsync({ id: e.id });
                     toast.success("Enrollment approved.");
                     router.refresh();
-                  })
-                }
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }}
               >
                 <Check className="mr-1 size-4" /> Approve
               </Button>
@@ -58,13 +61,15 @@ export function PendingEnrollments({ items }: { items: PendingEnrollment[] }) {
                 size="sm"
                 variant="outline"
                 disabled={pending}
-                onClick={() =>
-                  start(async () => {
-                    await rejectEnrollmentAction(e.id);
+                onClick={async () => {
+                  try {
+                    await reject.mutateAsync({ id: e.id });
                     toast.success("Enrollment rejected.");
                     router.refresh();
-                  })
-                }
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }}
               >
                 <X className="mr-1 size-4" /> Reject
               </Button>

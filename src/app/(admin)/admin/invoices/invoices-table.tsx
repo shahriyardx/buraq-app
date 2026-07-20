@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { type Column, DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { generateInvoicePdfAction, sendInvoiceEmailAction } from "./actions";
+import { trpc } from "@/trpc/client";
 import {
   type CourseOption,
   InvoiceFormDialog,
@@ -53,8 +53,10 @@ export type InvoiceRow = {
 
 function RowActions({ invoice }: { invoice: InvoiceRow }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [paidOpen, setPaidOpen] = useState(false);
+  const sendEmail = trpc.invoices.sendEmail.useMutation();
+  const generatePdf = trpc.invoices.generatePdf.useMutation();
+  const pending = sendEmail.isPending || generatePdf.isPending;
 
   return (
     <>
@@ -86,28 +88,32 @@ function RowActions({ invoice }: { invoice: InvoiceRow }) {
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            onClick={() =>
-              startTransition(async () => {
-                const res = await sendInvoiceEmailAction(invoice.id);
+            onClick={async () => {
+              try {
+                const res = await sendEmail.mutateAsync({ id: invoice.id });
                 if (res.ok) toast.success(res.message);
                 else toast.error(res.message);
-              })
-            }
+              } catch (err) {
+                toast.error((err as Error).message);
+              }
+            }}
           >
             <Mail className="mr-2 size-4" /> Send email
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() =>
-              startTransition(async () => {
-                const res = await generateInvoicePdfAction(invoice.id);
+            onClick={async () => {
+              try {
+                const res = await generatePdf.mutateAsync({ id: invoice.id });
                 if (res.ok) {
                   toast.success(res.message);
                   router.refresh();
                 } else {
                   toast.error(res.message);
                 }
-              })
-            }
+              } catch (err) {
+                toast.error((err as Error).message);
+              }
+            }}
           >
             <FileText className="mr-2 size-4" /> Generate PDF
           </DropdownMenuItem>

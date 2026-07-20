@@ -3,25 +3,20 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { requireStudent } from "@/lib/dal";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { CertificatesList } from "./certificates-list";
 
 export const metadata: Metadata = { title: "Certificates" };
 
 export default async function StudentCertificatesPage() {
-  const session = await requireStudent();
-  const studentId = session.user.id;
+  await requireStudent();
 
-  const certificates = await prisma.certificate.findMany({
-    where: { studentId },
-    include: { course: { select: { name: true } } },
-    orderBy: { issuedDate: "desc" },
-  });
+  const certificates = await api.certificates.mine();
 
   const rows = certificates.map((c) => ({
     id: c.id,
     certificateId: c.certificateId,
-    courseName: c.course.name,
+    courseName: c.courseName,
     issuedDate: c.issuedDate.toISOString(),
     status: c.status,
     pdfUrl: c.pdfUrl,

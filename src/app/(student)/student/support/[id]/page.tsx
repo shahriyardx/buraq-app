@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { ArrowLeft, Paperclip } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -8,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { requireStudent } from "@/lib/dal";
 import { formatDateTime } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
+import { api } from "@/trpc/server";
 import { ReplyForm } from "../reply-form";
 
 export const metadata: Metadata = { title: "Ticket" };
@@ -21,32 +22,14 @@ function categoryLabel(value: string) {
 export default async function StudentTicketThreadPage({
   params,
 }: PageProps<"/student/support/[id]">) {
-  const session = await requireStudent();
+  await requireStudent();
   const { id } = await params;
 
-  const ticket = await prisma.supportTicket.findUnique({
-    where: { id },
-    include: { messages: { orderBy: { createdAt: "asc" } } },
+  const ticket = await api.support.studentGet({ id }).catch((err) => {
+    if (err instanceof TRPCError && err.code === "NOT_FOUND") return null;
+    throw err;
   });
-
-  // A student may only view their own tickets.
-  if (!ticket || ticket.studentId !== session.user.id) notFound();
-
-  // Admin replies carry only authorId; resolve their names in one query.
-  const adminIds = [
-    ...new Set(
-      ticket.messages
-        .filter((m) => m.authorRole === "ADMIN")
-        .map((m) => m.authorId),
-    ),
-  ];
-  const admins = adminIds.length
-    ? await prisma.user.findMany({
-        where: { id: { in: adminIds } },
-        select: { id: true, name: true },
-      })
-    : [];
-  const nameById = new Map(admins.map((a) => [a.id, a.name]));
+  if (!ticket) notFound();
 
   return (
     <>
@@ -112,9 +95,7 @@ export default async function StudentTicketThreadPage({
                       )}
                     >
                       <span className="font-medium">
-                        {isStudent
-                          ? "You"
-                          : (nameById.get(m.authorId) ?? "Support")}
+                        {isStudent ? "You" : (m.authorName ?? "Support")}
                       </span>
                       <span>·</span>
                       <span>{formatDateTime(m.createdAt)}</span>

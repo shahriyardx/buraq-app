@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { requireStudent } from "@/lib/dal";
 import { formatDate } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { AttendanceCalendar } from "./attendance-calendar";
 
 export const metadata: Metadata = { title: "My Attendance" };
@@ -23,41 +23,23 @@ export const metadata: Metadata = { title: "My Attendance" };
 export default async function StudentAttendancePage({
   searchParams,
 }: PageProps<"/student/attendance">) {
-  const session = await requireStudent();
-  const studentId = session.user.id;
+  await requireStudent();
   const params = await searchParams;
+  const monthParam =
+    typeof params.month === "string" ? params.month : undefined;
 
-  // Month window (default current month), month param = YYYY-MM.
-  const now = new Date();
-  let year = now.getUTCFullYear();
-  let month = now.getUTCMonth();
-  if (typeof params.month === "string" && /^\d{4}-\d{2}$/.test(params.month)) {
-    const [y, m] = params.month.split("-").map(Number);
-    year = y;
-    month = m - 1;
-  }
+  const {
+    year,
+    month,
+    rows,
+    counts,
+    rate,
+    threshold,
+    belowThreshold,
+    dayStatuses,
+  } = await api.attendance.myMonth({ month: monthParam });
+
   const monthStart = new Date(Date.UTC(year, month, 1));
-  const monthEnd = new Date(Date.UTC(year, month + 1, 1));
-
-  const [rows, settings] = await Promise.all([
-    prisma.attendance.findMany({
-      where: { studentId, date: { gte: monthStart, lt: monthEnd } },
-      orderBy: { date: "desc" },
-      include: { course: { select: { name: true } } },
-    }),
-    prisma.schoolSettings.findUnique({ where: { id: "singleton" } }),
-  ]);
-
-  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0 };
-  const dayStatuses: Record<number, string> = {};
-  for (const r of rows) {
-    counts[r.status] += 1;
-    dayStatuses[new Date(r.date).getUTCDate()] = r.status;
-  }
-  const total = rows.length;
-  const rate = total ? Math.round((counts.PRESENT / total) * 100) : 0;
-  const threshold = settings?.attendanceThreshold ?? 75;
-  const belowThreshold = total > 0 && rate < threshold;
 
   const monthLabel = monthStart.toLocaleDateString("en-US", {
     month: "long",
@@ -133,7 +115,7 @@ export default async function StudentAttendancePage({
                   rows.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{formatDate(r.date)}</TableCell>
-                      <TableCell>{r.course.name}</TableCell>
+                      <TableCell>{r.courseName}</TableCell>
                       <TableCell>
                         <StatusBadge status={r.status} />
                       </TableCell>

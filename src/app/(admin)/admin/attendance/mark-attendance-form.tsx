@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,8 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { initialActionState } from "@/lib/form";
-import { saveAttendanceAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export type RosterRow = {
   studentId: string;
@@ -30,6 +29,7 @@ export type RosterRow = {
 };
 
 const STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
+type Status = (typeof STATUSES)[number];
 
 export function MarkAttendanceForm({
   courseId,
@@ -41,25 +41,39 @@ export function MarkAttendanceForm({
   roster: RosterRow[];
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    saveAttendanceAction,
-    initialActionState,
-  );
-
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
-      router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+  const [marks, setMarks] = useState<Record<string, Status>>(() => {
+    const initial: Record<string, Status> = {};
+    for (const r of roster) {
+      if (r.status && (STATUSES as readonly string[]).includes(r.status)) {
+        initial[r.studentId] = r.status as Status;
+      }
     }
-  }, [state, router]);
+    return initial;
+  });
+
+  const save = trpc.attendance.save.useMutation();
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const entries = Object.entries(marks).map(([studentId, status]) => ({
+      studentId,
+      status,
+    }));
+    try {
+      const res = await save.mutateAsync({ courseId, date, entries });
+      toast.success(
+        res.changed
+          ? `Saved ${res.changed} attendance record${res.changed === 1 ? "" : "s"}.`
+          : "No changes to save.",
+      );
+      router.refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
 
   return (
-    <form action={formAction} className="space-y-4">
-      <input type="hidden" name="courseId" value={courseId} />
-      <input type="hidden" name="date" value={date} />
-
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -91,8 +105,13 @@ export function MarkAttendanceForm({
                   </TableCell>
                   <TableCell>
                     <Select
-                      name={r.studentId}
-                      defaultValue={r.status ?? undefined}
+                      value={marks[r.studentId] ?? ""}
+                      onValueChange={(value) =>
+                        setMarks((prev) => ({
+                          ...prev,
+                          [r.studentId]: value as Status,
+                        }))
+                      }
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Not marked" />
@@ -115,8 +134,8 @@ export function MarkAttendanceForm({
 
       {roster.length > 0 && (
         <div className="flex justify-end">
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Save attendance"}
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending ? "Saving…" : "Save attendance"}
           </Button>
         </div>
       )}

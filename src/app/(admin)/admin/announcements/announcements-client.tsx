@@ -1,9 +1,12 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Megaphone, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -15,38 +18,53 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/form";
 import { formatDateTime } from "@/lib/format";
-import { createAnnouncementAction, deleteAnnouncementAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export type AnnouncementItem = {
   id: string;
   title: string;
   body: string;
   authorName: string | null;
-  publishedAt: string;
+  publishedAt: Date;
 };
+
+const schema = z.object({
+  title: z.string().min(2, "Title is required"),
+  body: z.string().min(2, "Message is required"),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 function CreateDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, action, pending] = useActionState(
-    createAnnouncementAction,
-    initialActionState,
-  );
+  const create = trpc.announcements.create.useMutation();
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit, reset } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { title: "", body: "" },
+  });
+
+  async function onSubmit(values: FormValues) {
+    try {
+      await create.mutateAsync(values);
+      toast.success("Announcement published.");
       setOpen(false);
+      reset();
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -65,18 +83,47 @@ function CreateDialog() {
             Published announcements are visible to all students.
           </DialogDescription>
         </DialogHeader>
-        <form action={action} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
-            <Input id="title" name="title" required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="body">Message</Label>
-            <Textarea id="body" name="body" rows={4} required />
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Publishing…" : "Publish"}
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup>
+            <Controller
+              control={control}
+              name="title"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="title">Title</FieldLabel>
+                  <Input
+                    id="title"
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+            <Controller
+              control={control}
+              name="body"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="body">Message</FieldLabel>
+                  <Textarea
+                    id="body"
+                    rows={4}
+                    aria-invalid={fieldState.invalid}
+                    {...field}
+                  />
+                  {fieldState.invalid && (
+                    <FieldError errors={[fieldState.error]} />
+                  )}
+                </Field>
+              )}
+            />
+          </FieldGroup>
+          <DialogFooter className="mt-4">
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? "Publishing…" : "Publish"}
             </Button>
           </DialogFooter>
         </form>
@@ -87,19 +134,21 @@ function CreateDialog() {
 
 function DeleteButton({ id }: { id: string }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const remove = trpc.announcements.delete.useMutation();
   return (
     <Button
       variant="ghost"
       size="icon"
-      disabled={pending}
-      onClick={() =>
-        start(async () => {
-          await deleteAnnouncementAction(id);
+      disabled={remove.isPending}
+      onClick={async () => {
+        try {
+          await remove.mutateAsync({ id });
           toast.success("Announcement deleted.");
           router.refresh();
-        })
-      }
+        } catch (err) {
+          toast.error((err as Error).message);
+        }
+      }}
     >
       <Trash2 className="size-4 text-destructive" />
     </Button>

@@ -1,16 +1,31 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/form";
 import { initials } from "@/lib/format";
-import { updateProfileAction } from "./actions";
+import { uploadFile } from "@/lib/upload-client";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export type ProfileValues = {
   name: string;
@@ -29,22 +44,46 @@ export function ProfileForm({
   r2Configured: boolean;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    updateProfileAction,
-    initialActionState,
-  );
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      phone: profile.phone ?? "",
+      address: profile.address ?? "",
+    },
+  });
+
+  const update = trpc.account.updateProfile.useMutation();
+  const pending = update.isPending || uploading;
+
+  async function onSubmit(values: FormValues) {
+    try {
+      let photoUrl: string | undefined;
+      if (photo) {
+        setUploading(true);
+        photoUrl = await uploadFile(photo, "profile");
+        setUploading(false);
+      }
+
+      await update.mutateAsync({
+        phone: values.phone || null,
+        address: values.address || null,
+        photoUrl,
+      });
+
+      toast.success("Profile updated.");
+      setPhoto(null);
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      setUploading(false);
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="flex items-center gap-4">
         <Avatar className="size-16">
           {profile.photoUrl && (
@@ -60,56 +99,73 @@ export function ProfileForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="name">Full name</Label>
+      <FieldGroup className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="name">Full name</FieldLabel>
           <Input id="name" defaultValue={profile.name} readOnly disabled />
-          <p className="text-xs text-muted-foreground">
+          <FieldDescription>
             Managed by the school administration.
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="studentId">Student ID</Label>
+          </FieldDescription>
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor="studentId">Student ID</FieldLabel>
           <Input
             id="studentId"
             defaultValue={profile.studentId ?? "—"}
             readOnly
             disabled
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor="email">Email</FieldLabel>
           <Input id="email" defaultValue={profile.email} readOnly disabled />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="phone">Phone</Label>
-          <Input id="phone" name="phone" defaultValue={profile.phone ?? ""} />
-        </div>
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="address">Address</Label>
-          <Textarea
-            id="address"
-            name="address"
-            defaultValue={profile.address ?? ""}
-            rows={2}
-          />
-        </div>
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="photo">Photo</Label>
+        </Field>
+
+        <Controller
+          control={control}
+          name="phone"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="phone">Phone</FieldLabel>
+              <Input id="phone" aria-invalid={fieldState.invalid} {...field} />
+            </Field>
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="address"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid} className="sm:col-span-2">
+              <FieldLabel htmlFor="address">Address</FieldLabel>
+              <Textarea
+                id="address"
+                rows={2}
+                aria-invalid={fieldState.invalid}
+                {...field}
+              />
+            </Field>
+          )}
+        />
+
+        <Field className="sm:col-span-2">
+          <FieldLabel htmlFor="photo">Photo</FieldLabel>
           <Input
             id="photo"
-            name="photo"
             type="file"
             accept="image/*"
             disabled={!r2Configured}
+            onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
           />
           {!r2Configured && (
-            <p className="text-xs text-muted-foreground">
+            <FieldDescription>
               File storage (R2) is not configured; photo uploads are disabled.
-            </p>
+            </FieldDescription>
           )}
-        </div>
-      </div>
+        </Field>
+      </FieldGroup>
 
       <Button type="submit" disabled={pending}>
         {pending ? "Saving…" : "Save changes"}

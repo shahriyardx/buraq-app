@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import { toast } from "sonner";
 import {
   Select,
@@ -10,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { setTicketStatusAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 type Status = "OPEN" | "IN_PROGRESS" | "RESOLVED";
 
@@ -28,20 +27,22 @@ export function StatusControl({
   status: Status;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const setStatus = trpc.support.setStatus.useMutation();
 
   return (
     <Select
       value={status}
-      onValueChange={(next) =>
-        startTransition(async () => {
-          await setTicketStatusAction(ticketId, next as Status);
+      onValueChange={async (next) => {
+        try {
+          await setStatus.mutateAsync({ ticketId, status: next as Status });
           toast.success("Status updated.");
           router.refresh();
-        })
-      }
+        } catch (err) {
+          toast.error((err as Error).message);
+        }
+      }}
     >
-      <SelectTrigger size="sm" className="w-40" disabled={pending}>
+      <SelectTrigger size="sm" className="w-40" disabled={setStatus.isPending}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -1,15 +1,33 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/form";
-import { updateSchoolProfileAction } from "./actions";
+import { uploadFile } from "@/lib/upload-client";
+import { trpc } from "@/trpc/client";
+
+const schema = z.object({
+  name: z.string().min(2, "School name is required"),
+  email: z.string().email("Valid email required").or(z.literal("")).optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  officeHours: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export type SchoolProfileValues = {
   name: string;
@@ -28,70 +46,128 @@ export function SchoolProfileForm({
   r2Configured: boolean;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(
-    updateSchoolProfileAction,
-    initialActionState,
-  );
+  const [logo, setLogo] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
+  const { control, handleSubmit } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: settings.name,
+      email: settings.email ?? "",
+      phone: settings.phone ?? "",
+      address: settings.address ?? "",
+      officeHours: settings.officeHours ?? "",
+    },
+  });
+
+  const update = trpc.settings.updateProfile.useMutation();
+  const pending = update.isPending || uploading;
+
+  async function onSubmit(values: FormValues) {
+    try {
+      let logoUrl: string | undefined;
+      if (logo && r2Configured) {
+        setUploading(true);
+        logoUrl = await uploadFile(logo, "school");
+        setUploading(false);
+      }
+
+      await update.mutateAsync({
+        name: values.name,
+        email: values.email || null,
+        phone: values.phone || null,
+        address: values.address || null,
+        officeHours: values.officeHours || null,
+        logoUrl,
+      });
+      toast.success("School profile saved.");
+      setLogo(null);
       router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+    } catch (err) {
+      setUploading(false);
+      toast.error((err as Error).message);
     }
-  }, [state, router]);
+  }
 
   return (
     <Card className="p-6">
-      <form action={formAction} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="name">School name</Label>
-            <Input
-              id="name"
-              name="name"
-              defaultValue={settings.name}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Contact email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              defaultValue={settings.email ?? ""}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              name="phone"
-              defaultValue={settings.phone ?? ""}
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="address">Address</Label>
-            <Textarea
-              id="address"
-              name="address"
-              defaultValue={settings.address ?? ""}
-              rows={2}
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="officeHours">Office hours</Label>
-            <Input
-              id="officeHours"
-              name="officeHours"
-              placeholder="Mon–Fri, 9am–5pm"
-              defaultValue={settings.officeHours ?? ""}
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="logo">Logo</Label>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+          <Controller
+            control={control}
+            name="name"
+            render={({ field, fieldState }) => (
+              <Field
+                data-invalid={fieldState.invalid}
+                className="sm:col-span-2"
+              >
+                <FieldLabel htmlFor="name">School name</FieldLabel>
+                <Input id="name" aria-invalid={fieldState.invalid} {...field} />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="email"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor="email">Contact email</FieldLabel>
+                <Input
+                  id="email"
+                  type="email"
+                  aria-invalid={fieldState.invalid}
+                  {...field}
+                />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="phone"
+            render={({ field }) => (
+              <Field>
+                <FieldLabel htmlFor="phone">Phone</FieldLabel>
+                <Input id="phone" {...field} />
+              </Field>
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="address"
+            render={({ field }) => (
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="address">Address</FieldLabel>
+                <Textarea id="address" rows={2} {...field} />
+              </Field>
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="officeHours"
+            render={({ field }) => (
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="officeHours">Office hours</FieldLabel>
+                <Input
+                  id="officeHours"
+                  placeholder="Mon–Fri, 9am–5pm"
+                  {...field}
+                />
+              </Field>
+            )}
+          />
+
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="logo">Logo</FieldLabel>
             {settings.logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -102,18 +178,18 @@ export function SchoolProfileForm({
             )}
             <Input
               id="logo"
-              name="logo"
               type="file"
               accept="image/*"
               disabled={!r2Configured}
+              onChange={(e) => setLogo(e.target.files?.[0] ?? null)}
             />
             {!r2Configured && (
               <p className="text-xs text-muted-foreground">
                 File storage (R2) is not configured; logo uploads are disabled.
               </p>
             )}
-          </div>
-        </div>
+          </Field>
+        </FieldGroup>
 
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save profile"}

@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/dal";
 import { formatDate } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/trpc/server";
 import { toAttendanceDate } from "./date";
-import { MarkAttendanceForm, type RosterRow } from "./mark-attendance-form";
+import { MarkAttendanceForm } from "./mark-attendance-form";
 import { MarkFilters } from "./mark-filters";
 
 export const metadata: Metadata = { title: "Mark Attendance" };
@@ -22,38 +22,10 @@ export default async function AttendancePage({
   const courseId = typeof sp.courseId === "string" ? sp.courseId : "";
   const date = typeof sp.date === "string" ? sp.date : "";
 
-  const courses = await prisma.course.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  const courses = await api.attendance.courseOptions();
 
-  const attDate = toAttendanceDate(date);
-  let roster: RosterRow[] = [];
-  const ready = Boolean(courseId && attDate);
-
-  if (courseId && attDate) {
-    const [enrollments, existing] = await Promise.all([
-      prisma.enrollment.findMany({
-        where: { courseId, status: "ACTIVE" },
-        select: {
-          student: { select: { id: true, name: true, studentId: true } },
-        },
-        orderBy: { student: { name: "asc" } },
-      }),
-      prisma.attendance.findMany({
-        where: { courseId, date: attDate },
-        select: { studentId: true, status: true },
-      }),
-    ]);
-    const byStudent = new Map(existing.map((a) => [a.studentId, a.status]));
-    roster = enrollments.map((e) => ({
-      studentId: e.student.id,
-      name: e.student.name,
-      studentCode: e.student.studentId,
-      status: byStudent.get(e.student.id) ?? null,
-    }));
-  }
+  const ready = Boolean(courseId && toAttendanceDate(date));
+  const roster = ready ? await api.attendance.roster({ courseId, date }) : [];
 
   const selectedCourse = courses.find((c) => c.id === courseId);
 

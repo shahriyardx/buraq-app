@@ -105,6 +105,7 @@ model User {
   gender    Gender?
   address   String?
   photoUrl  String?
+  emailNotifications Boolean @default(true)
 
   sessions     Session[]
   accounts     Account[]

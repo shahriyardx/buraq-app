@@ -19,10 +19,10 @@ export default function proxy(request: NextRequest) {
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 
-  // Signed-in users shouldn't see the login page.
-  if (hasSession && pathname === "/login") {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
+  // NOTE: we intentionally do NOT redirect cookie-bearing users away from
+  // /login here. The cookie may be stale/invalid (e.g. the session row was
+  // removed) — validation happens in the login page + DAL. Redirecting on mere
+  // cookie presence causes a /login ↔ / loop when the session is invalid.
 
   // Unauthenticated users hitting a protected route go to login.
   if (!hasSession && !isPublic) {

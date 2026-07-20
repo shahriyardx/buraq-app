@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/dal";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
+  // A valid session skips the form; a stale/invalid cookie falls through and
+  // shows it (no redirect loop with the Proxy).
+  const session = await getSession();
+  if (session) redirect(session.user.role === "ADMIN" ? "/admin" : "/student");
+
   const params = await searchParams;
   const redirectTo =
     typeof params.redirect === "string" && params.redirect.startsWith("/")

@@ -2,7 +2,7 @@
 
 import { Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,29 +14,37 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { downloadCsv } from "@/lib/csv";
-import { initialActionState } from "@/lib/form";
-import { bulkImportStudentsAction } from "./actions";
+import { trpc } from "@/trpc/client";
 
 export function BulkImportDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(
-    bulkImportStudentsAction,
-    initialActionState,
-  );
+  const [file, setFile] = useState<File | null>(null);
+  const bulk = trpc.students.bulkImport.useMutation();
 
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success(state.message);
-      setOpen(false);
-      router.refresh();
-    } else if (state.status === "error") {
-      toast.error(state.message);
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file) {
+      toast.error("Please choose a CSV file.");
+      return;
     }
-  }, [state, router]);
+    try {
+      const csv = await file.text();
+      const res = await bulk.mutateAsync({ csv });
+      toast.success(
+        `Imported ${res.created} student${res.created === 1 ? "" : "s"}.` +
+          (res.failed ? ` ${res.failed} failed.` : ""),
+      );
+      setOpen(false);
+      setFile(null);
+      router.refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -78,20 +86,20 @@ export function BulkImportDialog() {
           Download template
         </Button>
 
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="csv">CSV file</Label>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Field>
+            <FieldLabel htmlFor="csv">CSV file</FieldLabel>
             <Input
               id="csv"
-              name="csv"
               type="file"
               accept=".csv,text/csv"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               required
             />
-          </div>
+          </Field>
           <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Importing…" : "Import"}
+            <Button type="submit" disabled={bulk.isPending}>
+              {bulk.isPending ? "Importing…" : "Import"}
             </Button>
           </DialogFooter>
         </form>

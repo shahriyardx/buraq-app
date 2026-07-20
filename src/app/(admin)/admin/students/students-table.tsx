@@ -3,7 +3,6 @@
 import { MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import { toast } from "sonner";
 import { type Column, DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -16,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { initials } from "@/lib/format";
-import { createStudentAction, setStudentStatusAction } from "./actions";
+import { trpc } from "@/trpc/client";
 import { BulkImportDialog } from "./bulk-import-dialog";
 import { StudentFormDialog } from "./student-form-dialog";
 
@@ -33,14 +32,14 @@ export type StudentRow = {
 
 function RowActions({ student }: { student: StudentRow }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const setStatus = trpc.students.setStatus.useMutation();
   const nextStatus = student.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="icon" disabled={pending}>
+          <Button variant="ghost" size="icon" disabled={setStatus.isPending}>
             <MoreHorizontal className="size-4" />
           </Button>
         }
@@ -52,17 +51,15 @@ function RowActions({ student }: { student: StudentRow }) {
           View profile
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() =>
-            startTransition(async () => {
-              await setStudentStatusAction(student.id, nextStatus);
-              toast.success(
-                nextStatus === "ACTIVE"
-                  ? "Student activated."
-                  : "Student deactivated.",
-              );
-              router.refresh();
-            })
-          }
+          onClick={async () => {
+            await setStatus.mutateAsync({ id: student.id, status: nextStatus });
+            toast.success(
+              nextStatus === "ACTIVE"
+                ? "Student activated."
+                : "Student deactivated.",
+            );
+            router.refresh();
+          }}
         >
           {nextStatus === "ACTIVE" ? (
             <>
@@ -152,7 +149,6 @@ export function StudentsTable({
           <BulkImportDialog />
           <StudentFormDialog
             mode="create"
-            action={createStudentAction}
             courses={courses}
             trigger={
               <Button size="sm">

@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { Pencil } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -17,8 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireAdmin } from "@/lib/dal";
 import { formatCurrency, formatDate, initials } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
-import { updateStudentAction } from "../actions";
+import { api } from "@/trpc/server";
 import { StudentFormDialog } from "../student-form-dialog";
 
 export const metadata: Metadata = { title: "Student profile" };
@@ -29,26 +29,10 @@ export default async function StudentProfilePage({
   await requireAdmin();
   const { id } = await params;
 
-  const student = await prisma.user.findFirst({
-    where: { id, role: "STUDENT" },
-    include: {
-      enrollments: {
-        include: { course: true },
-        orderBy: { createdAt: "desc" },
-      },
-      attendances: {
-        include: { course: true },
-        orderBy: { date: "desc" },
-        take: 20,
-      },
-      certificates: {
-        include: { course: true },
-        orderBy: { issuedDate: "desc" },
-      },
-      invoices: { include: { course: true }, orderBy: { createdAt: "desc" } },
-    },
+  const student = await api.students.get({ id }).catch((err) => {
+    if (err instanceof TRPCError && err.code === "NOT_FOUND") return null;
+    throw err;
   });
-
   if (!student) notFound();
 
   const present = student.attendances.filter(
@@ -72,7 +56,6 @@ export default async function StudentProfilePage({
       <PageHeader title={student.name} description="Student profile & records.">
         <StudentFormDialog
           mode="edit"
-          action={updateStudentAction.bind(null, student.id)}
           student={{
             id: student.id,
             name: student.name,
@@ -152,7 +135,7 @@ export default async function StudentProfilePage({
                     student.enrollments.map((e) => (
                       <TableRow key={e.id}>
                         <TableCell className="font-medium">
-                          {e.course.name}
+                          {e.courseName}
                         </TableCell>
                         <TableCell>{e.progress}%</TableCell>
                         <TableCell>
@@ -190,7 +173,7 @@ export default async function StudentProfilePage({
                     student.attendances.map((a) => (
                       <TableRow key={a.id}>
                         <TableCell>{formatDate(a.date)}</TableCell>
-                        <TableCell>{a.course.name}</TableCell>
+                        <TableCell>{a.courseName}</TableCell>
                         <TableCell>
                           <StatusBadge status={a.status} />
                         </TableCell>
@@ -229,7 +212,7 @@ export default async function StudentProfilePage({
                         <TableCell className="font-mono text-xs">
                           {c.certificateId}
                         </TableCell>
-                        <TableCell>{c.course.name}</TableCell>
+                        <TableCell>{c.courseName}</TableCell>
                         <TableCell>{formatDate(c.issuedDate)}</TableCell>
                         <TableCell>
                           <StatusBadge status={c.status} />
@@ -270,7 +253,7 @@ export default async function StudentProfilePage({
                         <TableCell className="font-mono text-xs">
                           {inv.invoiceNumber}
                         </TableCell>
-                        <TableCell>{inv.course?.name ?? "—"}</TableCell>
+                        <TableCell>{inv.courseName ?? "—"}</TableCell>
                         <TableCell>{formatCurrency(inv.amount)}</TableCell>
                         <TableCell>{formatDate(inv.dueDate)}</TableCell>
                         <TableCell>

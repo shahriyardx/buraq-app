@@ -19,6 +19,7 @@ import { requireAdmin } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { api } from "@/trpc/server";
 import { CourseFormDialog } from "../course-form-dialog";
+import { ClassSchedule } from "./class-schedule";
 import { EnrollStudentDialog } from "./enroll-student-dialog";
 
 export const metadata: Metadata = { title: "Course detail" };
@@ -35,6 +36,15 @@ export default async function CourseDetailPage({
   });
 
   const available = course.available;
+  const sessions = (await api.courses.classSessions({ courseId: id })).map(
+    (s) => ({
+      id: s.id,
+      date: s.date.toISOString(),
+      startTime: s.startTime,
+      endTime: s.endTime,
+      instructor: s.instructor,
+    }),
+  );
 
   const info: [string, string][] = [
     ["Level", course.level ?? "—"],
@@ -139,6 +149,8 @@ export default async function CourseDetailPage({
               </TableBody>
             </Table>
           </Card>
+
+          <ClassSchedule courseId={course.id} sessions={sessions} />
         </div>
       </div>
     </>

@@ -263,6 +263,71 @@ export const coursesRouter = createTRPCRouter({
       return { ok: true };
     }),
 
+  // ── Class schedule ────────────────────────────────────────────────────────
+  classSessions: adminProcedure
+    .input(z.object({ courseId: z.string() }))
+    .query(async ({ input }) => {
+      const sessions = await prisma.classSession.findMany({
+        where: { courseId: input.courseId },
+        orderBy: { date: "asc" },
+      });
+      return sessions.map((s) => ({
+        id: s.id,
+        date: s.date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        instructor: s.instructor,
+      }));
+    }),
+
+  addClassSession: adminProcedure
+    .input(
+      z.object({
+        courseId: z.string(),
+        date: z.string().min(1, "Date is required"),
+        startTime: z.string().nullish(),
+        endTime: z.string().nullish(),
+        instructor: z.string().nullish(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const date = new Date(input.date);
+      if (Number.isNaN(date.getTime())) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid date." });
+      }
+      const session = await prisma.classSession.create({
+        data: {
+          courseId: input.courseId,
+          date,
+          startTime: input.startTime || null,
+          endTime: input.endTime || null,
+          instructor: input.instructor || null,
+        },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "class_session.add",
+        entity: "ClassSession",
+        entityId: session.id,
+      });
+      return { id: session.id };
+    }),
+
+  deleteClassSession: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.classSession.delete({ where: { id: input.id } });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "class_session.delete",
+        entity: "ClassSession",
+        entityId: input.id,
+      });
+      return { ok: true };
+    }),
+
   myCourses: studentProcedure.query(async ({ ctx }) => {
     const studentId = ctx.session.user.id;
     const [enrollments, activeCourses, certificates] = await Promise.all([

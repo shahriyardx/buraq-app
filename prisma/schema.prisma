@@ -1,0 +1,409 @@
+// Buraq Horse Riding School — data model
+// Postgres + Prisma. better-auth core tables (User/Session/Account/Verification)
+// extended with domain fields, plus the spec's school modules.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum CourseStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum EnrollmentStatus {
+  PENDING // student-requested, awaiting admin approval
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum CertificateStatus {
+  VALID
+  REVOKED
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  OVERDUE
+}
+
+enum PaymentMethod {
+  CASH
+  BANK
+  ONLINE
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum TicketCategory {
+  GENERAL
+  BILLING
+  COURSES
+  TECHNICAL
+  OTHER
+}
+
+enum EmailTemplateKey {
+  ENROLLMENT
+  INVOICE
+  CERTIFICATE
+  SUPPORT
+}
+
+// ─── better-auth core ───────────────────────────────────────────────────────
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // domain fields (declared as additionalFields in better-auth config)
+  role      Role       @default(STUDENT)
+  status    UserStatus @default(ACTIVE)
+  studentId String?    @unique // BURAQ-STU-XXXXXX, students only
+  phone     String?
+  dob       DateTime?
+  gender    Gender?
+  address   String?
+  photoUrl  String?
+
+  sessions     Session[]
+  accounts     Account[]
+  enrollments  Enrollment[]
+  attendances  Attendance[]
+  certificates Certificate[]
+  invoices     Invoice[]
+  tickets      SupportTicket[]
+
+  @@index([role])
+  @@index([status])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verification")
+}
+
+// ─── Courses & scheduling ───────────────────────────────────────────────────
+
+model Course {
+  id           String       @id @default(cuid())
+  name         String
+  description  String?
+  level        String?
+  durationWeeks Int?
+  price        Decimal      @default(0) @db.Decimal(10, 2)
+  schedule     String?
+  maxStudents  Int?
+  instructor   String?
+  status       CourseStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  enrollments  Enrollment[]
+  attendances  Attendance[]
+  certificates Certificate[]
+  invoices     Invoice[]
+  sessions     ClassSession[]
+
+  @@index([status])
+  @@map("course")
+}
+
+model ClassSession {
+  id         String   @id @default(cuid())
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  date       DateTime
+  startTime  String?
+  endTime    String?
+  instructor String?
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+  @@index([courseId])
+  @@map("class_session")
+}
+
+model Enrollment {
+  id        String           @id @default(cuid())
+  studentId String
+  student   User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  startDate DateTime?
+  endDate   DateTime?
+  progress  Int              @default(0) // 0-100
+  status    EnrollmentStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([studentId, courseId])
+  @@index([status])
+  @@map("enrollment")
+}
+
+// ─── Attendance ─────────────────────────────────────────────────────────────
+
+model Attendance {
+  id        String           @id @default(cuid())
+  studentId String
+  student   User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  markedBy  String? // admin userId
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  changeLogs AttendanceChangeLog[]
+
+  @@unique([studentId, courseId, date])
+  @@index([date])
+  @@index([courseId, date])
+  @@map("attendance")
+}
+
+model AttendanceChangeLog {
+  id           String            @id @default(cuid())
+  attendanceId String
+  attendance   Attendance        @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  fromStatus   AttendanceStatus?
+  toStatus     AttendanceStatus
+  changedBy    String // admin userId
+  createdAt    DateTime          @default(now())
+
+  @@index([attendanceId])
+  @@map("attendance_change_log")
+}
+
+// ─── Certificates ───────────────────────────────────────────────────────────
+
+model Certificate {
+  id            String            @id @default(cuid())
+  certificateId String            @unique // BURAQ-YYYY-XXXXXX
+  studentId     String
+  student       User              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId      String
+  course        Course            @relation(fields: [courseId], references: [id])
+  issuedDate    DateTime          @default(now())
+  pdfUrl        String?
+  status        CertificateStatus @default(VALID)
+  revokedReason String?
+  revokedAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@map("certificate")
+}
+
+// ─── Invoices ───────────────────────────────────────────────────────────────
+
+model Invoice {
+  id            String         @id @default(cuid())
+  invoiceNumber String         @unique // INV-YYYY-XXXXXX
+  studentId     String
+  student       User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId      String?
+  course        Course?        @relation(fields: [courseId], references: [id])
+  amount        Decimal        @db.Decimal(10, 2)
+  discount      Decimal        @default(0) @db.Decimal(10, 2)
+  dueDate       DateTime
+  paidDate      DateTime?
+  paymentMethod PaymentMethod?
+  reference     String?
+  status        InvoiceStatus  @default(UNPAID)
+  pdfUrl        String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("invoice")
+}
+
+// ─── Support ────────────────────────────────────────────────────────────────
+
+model SupportTicket {
+  id         String         @id @default(cuid())
+  ticketId   String         @unique // TKT-XXXXXX
+  studentId  String
+  student    User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject    String
+  category   TicketCategory @default(GENERAL)
+  status     TicketStatus   @default(OPEN)
+  assignedTo String? // admin userId
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  messages TicketMessage[]
+
+  @@index([status])
+  @@index([studentId])
+  @@map("support_ticket")
+}
+
+model TicketMessage {
+  id            String        @id @default(cuid())
+  ticketId      String
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId      String // userId (student or admin)
+  authorRole    Role
+  body          String
+  attachmentUrl String?
+  createdAt     DateTime      @default(now())
+
+  @@index([ticketId])
+  @@map("ticket_message")
+}
+
+// ─── Announcements ──────────────────────────────────────────────────────────
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  authorId    String // admin userId
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt])
+  @@map("announcement")
+}
+
+// ─── Audit log ──────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String? // admin userId
+  actorName String?
+  action    String // e.g. "student.create"
+  entity    String? // e.g. "User"
+  entityId  String?
+  detail    String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// ─── Settings & templates ───────────────────────────────────────────────────
+
+model SchoolSettings {
+  id                 String   @id @default("singleton")
+  name               String   @default("Buraq Horse Riding School")
+  logoUrl            String?
+  address            String?
+  phone              String?
+  email              String?
+  officeHours        String?
+  attendanceThreshold Int     @default(75)
+  updatedAt          DateTime @updatedAt
+
+  @@map("school_settings")
+}
+
+model EmailTemplate {
+  id        String           @id @default(cuid())
+  key       EmailTemplateKey @unique
+  subject   String
+  body      String
+  updatedAt DateTime         @updatedAt
+
+  @@map("email_template")
+}
+
+model CertificateTemplate {
+  id            String   @id @default("singleton")
+  designUrl     String?
+  logoUrl       String?
+  signatureUrl  String?
+  signatureName String?
+  updatedAt     DateTime @updatedAt
+
+  @@map("certificate_template")
+}

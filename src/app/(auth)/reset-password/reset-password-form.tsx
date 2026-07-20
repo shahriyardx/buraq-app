@@ -37,28 +37,38 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="newPassword">New password</Label>
+        <Label htmlFor="newPassword" className="text-[#20302a]/80">
+          New password
+        </Label>
         <Input
           id="newPassword"
           name="newPassword"
           type="password"
           autoComplete="new-password"
           required
+          className="h-11 border-[#20302a]/15 bg-white/70 focus-visible:border-[#a5772f] focus-visible:ring-[#a5772f]/25"
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="confirm">Confirm password</Label>
+        <Label htmlFor="confirm" className="text-[#20302a]/80">
+          Confirm password
+        </Label>
         <Input
           id="confirm"
           name="confirm"
           type="password"
           autoComplete="new-password"
           required
+          className="h-11 border-[#20302a]/15 bg-white/70 focus-visible:border-[#a5772f] focus-visible:ring-[#a5772f]/25"
         />
       </div>
-      <Button type="submit" className="w-full" disabled={loading}>
+      <Button
+        type="submit"
+        disabled={loading}
+        className="h-11 w-full bg-[#7a5a2c] text-[#f4ece0] shadow-sm transition-colors hover:bg-[#6a4d25]"
+      >
         {loading ? "Updating…" : "Update password"}
       </Button>
     </form>

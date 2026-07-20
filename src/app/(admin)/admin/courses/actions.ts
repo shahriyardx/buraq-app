@@ -6,6 +6,7 @@ import { logAction } from "@/lib/audit";
 import { requireAdmin } from "@/lib/dal";
 import { enrollStudent } from "@/lib/enrollments";
 import { type ActionState, num, optStr, str } from "@/lib/form";
+import { generateInvoiceNumber } from "@/lib/ids";
 import { prisma } from "@/lib/prisma";
 
 const baseSchema = z.object({
@@ -159,4 +160,62 @@ export async function enrollStudentAction(
   } catch (err) {
     return { status: "error", message: (err as Error).message };
   }
+}
+
+/** Approve a student-submitted (PENDING) enrollment request. */
+export async function approveEnrollmentAction(enrollmentId: string) {
+  const session = await requireAdmin();
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: { course: true },
+  });
+  if (!enrollment || enrollment.status !== "PENDING") return;
+
+  await prisma.enrollment.update({
+    where: { id: enrollmentId },
+    data: { status: "ACTIVE", startDate: new Date() },
+  });
+
+  // Auto-invoice on approval (the enrollment row already existed, so the
+  // enrollStudent helper's create-time invoice didn't fire).
+  if (Number(enrollment.course.price) > 0) {
+    const due = new Date();
+    due.setDate(due.getDate() + 14);
+    await prisma.invoice.create({
+      data: {
+        invoiceNumber: generateInvoiceNumber(),
+        studentId: enrollment.studentId,
+        courseId: enrollment.courseId,
+        amount: enrollment.course.price,
+        dueDate: due,
+        status: "UNPAID",
+      },
+    });
+  }
+
+  await logAction({
+    actorId: session.user.id,
+    actorName: session.user.name,
+    action: "enrollment.approve",
+    entity: "Enrollment",
+    entityId: enrollmentId,
+    detail: enrollment.studentId,
+  });
+  revalidatePath("/admin/courses");
+}
+
+export async function rejectEnrollmentAction(enrollmentId: string) {
+  const session = await requireAdmin();
+  await prisma.enrollment.update({
+    where: { id: enrollmentId },
+    data: { status: "CANCELLED" },
+  });
+  await logAction({
+    actorId: session.user.id,
+    actorName: session.user.name,
+    action: "enrollment.reject",
+    entity: "Enrollment",
+    entityId: enrollmentId,
+  });
+  revalidatePath("/admin/courses");
 }

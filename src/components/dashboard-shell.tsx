@@ -7,6 +7,7 @@ import {
   Home,
   LifeBuoy,
   type LucideIcon,
+  Megaphone,
   Menu,
   Receipt,
   Settings,
@@ -43,6 +44,7 @@ const ICONS: Record<string, LucideIcon> = {
   award: Award,
   receipt: Receipt,
   "life-buoy": LifeBuoy,
+  megaphone: Megaphone,
   settings: Settings,
 };
 

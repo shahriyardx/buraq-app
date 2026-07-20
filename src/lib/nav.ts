@@ -11,6 +11,7 @@ export const adminNav: NavItem[] = [
   { label: "Courses", href: "/admin/courses", icon: "book-open" },
   { label: "Certificates", href: "/admin/certificates", icon: "award" },
   { label: "Invoices", href: "/admin/invoices", icon: "receipt" },
+  { label: "Announcements", href: "/admin/announcements", icon: "megaphone" },
   { label: "Support", href: "/admin/support", icon: "life-buoy" },
   { label: "Settings", href: "/admin/settings", icon: "settings" },
 ];

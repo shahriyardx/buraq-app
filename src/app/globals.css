@@ -129,3 +129,47 @@
     @apply font-sans;
   }
 }
+
+/* ── Equestrian login theming ─────────────────────────────────────────── */
+@keyframes buraq-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes buraq-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(-8deg);
+  }
+}
+
+@keyframes buraq-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(60px);
+  }
+}
+
+.buraq-rise {
+  opacity: 0;
+  animation: buraq-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.buraq-float {
+  animation: buraq-float 6s ease-in-out infinite;
+}
+
+/* Fine paper grain for the parchment panel + scene depth */
+.buraq-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}

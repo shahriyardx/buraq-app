@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: buraq-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: buraq
+    ports:
+      - "5432:5432"
+    volumes:
+      - buraq-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d buraq"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  buraq-pg-data:

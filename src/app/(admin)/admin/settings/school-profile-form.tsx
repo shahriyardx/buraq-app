@@ -15,9 +15,27 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { uploadFile } from "@/lib/upload-client";
 import { trpc } from "@/trpc/client";
+
+const CURRENCIES = [
+  { code: "BDT", label: "BDT — Bangladeshi Taka (৳)" },
+  { code: "USD", label: "USD — US Dollar ($)" },
+  { code: "EUR", label: "EUR — Euro (€)" },
+  { code: "GBP", label: "GBP — British Pound (£)" },
+  { code: "INR", label: "INR — Indian Rupee (₹)" },
+  { code: "PKR", label: "PKR — Pakistani Rupee (₨)" },
+  { code: "AED", label: "AED — UAE Dirham (د.إ)" },
+  { code: "SAR", label: "SAR — Saudi Riyal (﷼)" },
+];
 
 const schema = z.object({
   name: z.string().min(2, "School name is required"),
@@ -25,6 +43,7 @@ const schema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   officeHours: z.string().optional(),
+  currency: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -36,6 +55,7 @@ export type SchoolProfileValues = {
   phone: string | null;
   email: string | null;
   officeHours: string | null;
+  currency: string;
 };
 
 export function SchoolProfileForm({
@@ -57,6 +77,7 @@ export function SchoolProfileForm({
       phone: settings.phone ?? "",
       address: settings.address ?? "",
       officeHours: settings.officeHours ?? "",
+      currency: settings.currency ?? "BDT",
     },
   });
 
@@ -78,6 +99,7 @@ export function SchoolProfileForm({
         phone: values.phone || null,
         address: values.address || null,
         officeHours: values.officeHours || null,
+        currency: values.currency || "BDT",
         logoUrl,
       });
       toast.success("School profile saved.");
@@ -136,6 +158,31 @@ export function SchoolProfileForm({
               <Field>
                 <FieldLabel htmlFor="phone">Phone</FieldLabel>
                 <Input id="phone" {...field} />
+              </Field>
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="currency"
+            render={({ field }) => (
+              <Field>
+                <FieldLabel>Currency</FieldLabel>
+                <Select
+                  value={field.value || "BDT"}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             )}
           />

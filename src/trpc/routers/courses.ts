@@ -19,10 +19,26 @@ const courseInput = z.object({
     .int()
     .min(0, "Max students must be positive")
     .nullish(),
-  instructor: z.string().nullish(),
+  instructor: z.string().nullish(), // manual fallback when no account is linked
+  instructorUserId: z.string().nullish(),
 });
 
-function courseData(input: z.infer<typeof courseInput>) {
+/**
+ * Builds the persisted course row. When an instructor account is linked, the
+ * `instructor` display string is mirrored from that user's name so all the
+ * existing name-based views keep working.
+ */
+async function courseData(input: z.infer<typeof courseInput>) {
+  let instructorUserId = input.instructorUserId ?? null;
+  let instructor = input.instructor ?? null;
+  if (instructorUserId) {
+    const user = await prisma.user.findFirst({
+      where: { id: instructorUserId, role: "INSTRUCTOR" },
+      select: { name: true },
+    });
+    if (!user) instructorUserId = null;
+    else instructor = user.name;
+  }
   return {
     name: input.name,
     description: input.description ?? null,
@@ -31,7 +47,8 @@ function courseData(input: z.infer<typeof courseInput>) {
     price: input.price,
     schedule: input.schedule ?? null,
     maxStudents: input.maxStudents ?? null,
-    instructor: input.instructor ?? null,
+    instructor,
+    instructorUserId,
   };
 }
 
@@ -49,6 +66,7 @@ export const coursesRouter = createTRPCRouter({
         schedule: true,
         maxStudents: true,
         instructor: true,
+        instructorUserId: true,
         status: true,
         _count: { select: { enrollments: true } },
       },
@@ -63,6 +81,7 @@ export const coursesRouter = createTRPCRouter({
       schedule: c.schedule,
       maxStudents: c.maxStudents,
       instructor: c.instructor,
+      instructorUserId: c.instructorUserId,
       status: c.status,
       enrolledCount: c._count.enrollments,
     }));
@@ -100,6 +119,7 @@ export const coursesRouter = createTRPCRouter({
         schedule: course.schedule,
         maxStudents: course.maxStudents,
         instructor: course.instructor,
+        instructorUserId: course.instructorUserId,
         status: course.status,
         createdAt: course.createdAt,
         enrollments: course.enrollments.map((e) => ({
@@ -114,7 +134,9 @@ export const coursesRouter = createTRPCRouter({
     }),
 
   create: adminProcedure.input(courseInput).mutation(async ({ ctx, input }) => {
-    const course = await prisma.course.create({ data: courseData(input) });
+    const course = await prisma.course.create({
+      data: await courseData(input),
+    });
     await logAction({
       actorId: ctx.session.user.id,
       actorName: ctx.session.user.name,
@@ -131,7 +153,7 @@ export const coursesRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await prisma.course.update({
         where: { id: input.id },
-        data: courseData(input),
+        data: await courseData(input),
       });
       await logAction({
         actorId: ctx.session.user.id,
@@ -288,6 +310,7 @@ export const coursesRouter = createTRPCRouter({
         startTime: z.string().nullish(),
         endTime: z.string().nullish(),
         instructor: z.string().nullish(),
+        instructorUserId: z.string().nullish(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -295,13 +318,24 @@ export const coursesRouter = createTRPCRouter({
       if (Number.isNaN(date.getTime())) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid date." });
       }
+      let instructorUserId = input.instructorUserId || null;
+      let instructor = input.instructor || null;
+      if (instructorUserId) {
+        const user = await prisma.user.findFirst({
+          where: { id: instructorUserId, role: "INSTRUCTOR" },
+          select: { name: true },
+        });
+        if (!user) instructorUserId = null;
+        else instructor = user.name;
+      }
       const session = await prisma.classSession.create({
         data: {
           courseId: input.courseId,
           date,
           startTime: input.startTime || null,
           endTime: input.endTime || null,
-          instructor: input.instructor || null,
+          instructor,
+          instructorUserId,
         },
       });
       await logAction({

@@ -132,10 +132,12 @@ export function InvoicesTable({
   invoices,
   students,
   courses,
+  currency,
 }: {
   invoices: InvoiceRow[];
   students: StudentOption[];
   courses: CourseOption[];
+  currency: string;
 }) {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
@@ -164,7 +166,7 @@ export function InvoicesTable({
     {
       key: "amount",
       header: "Amount",
-      render: (i) => formatCurrency(i.net),
+      render: (i) => formatCurrency(i.net, currency),
     },
     {
       key: "dueDate",

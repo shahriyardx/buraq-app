@@ -4,6 +4,7 @@ import {
   Award,
   BookOpen,
   CalendarCheck,
+  ClipboardList,
   Home,
   LifeBuoy,
   type LucideIcon,
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   users: Users,
   "calendar-check": CalendarCheck,
   "book-open": BookOpen,
+  clipboard: ClipboardList,
   award: Award,
   receipt: Receipt,
   "life-buoy": LifeBuoy,
@@ -163,7 +165,7 @@ export function DashboardShell({
       </aside>
 
       {/* Main column */}
-      <div className="flex flex-1 flex-col lg:pl-64">
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur lg:px-8">
           {/* Mobile menu */}
           <Sheet open={open} onOpenChange={setOpen}>

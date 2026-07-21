@@ -19,11 +19,26 @@ export async function requireUser() {
   return session;
 }
 
+/** Home panel path for a given role. */
+export function panelFor(role: string | null | undefined) {
+  if (role === "ADMIN") return "/admin";
+  if (role === "INSTRUCTOR") return "/instructor";
+  return "/student";
+}
+
 export async function requireAdmin() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.user.status === "INACTIVE") redirect("/login?error=inactive");
-  if (session.user.role !== "ADMIN") redirect("/student");
+  if (session.user.role !== "ADMIN") redirect(panelFor(session.user.role));
+  return session;
+}
+
+export async function requireInstructor() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (session.user.status === "INACTIVE") redirect("/login?error=inactive");
+  if (session.user.role !== "INSTRUCTOR") redirect(panelFor(session.user.role));
   return session;
 }
 
@@ -31,6 +46,6 @@ export async function requireStudent() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.user.status === "INACTIVE") redirect("/login?error=inactive");
-  if (session.user.role !== "STUDENT") redirect("/admin");
+  if (session.user.role !== "STUDENT") redirect(panelFor(session.user.role));
   return session;
 }

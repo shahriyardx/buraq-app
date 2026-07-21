@@ -4,6 +4,7 @@ import { isR2Configured, uploadToR2 } from "@/lib/r2";
 
 const ALLOWED_PREFIXES = new Set([
   "students",
+  "instructors",
   "school",
   "certificates",
   "tickets",

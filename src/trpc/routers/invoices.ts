@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { isEmailConfigured, renderTemplate, sendEmail } from "@/lib/email";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { DEFAULT_CURRENCY, formatCurrency, formatDate } from "@/lib/format";
 import { generateInvoiceNumber } from "@/lib/ids";
 import { type InvoiceData, renderInvoicePdf } from "@/lib/pdf/invoice";
 import { prisma } from "@/lib/prisma";
@@ -29,6 +29,7 @@ async function buildInvoiceData(invoiceId: string): Promise<{
   invoiceNumber: string;
   dueDate: Date;
   net: number;
+  currency: string;
 } | null> {
   const [invoice, settings] = await Promise.all([
     prisma.invoice.findUnique({
@@ -42,6 +43,7 @@ async function buildInvoiceData(invoiceId: string): Promise<{
   const amount = Number(invoice.amount);
   const discount = Number(invoice.discount);
   const net = amount - discount;
+  const currency = settings?.currency ?? DEFAULT_CURRENCY;
 
   const data: InvoiceData = {
     schoolName: settings?.name ?? "Buraq Horse Riding School",
@@ -53,9 +55,9 @@ async function buildInvoiceData(invoiceId: string): Promise<{
     studentName: invoice.student.name,
     studentEmail: invoice.student.email,
     courseName: invoice.course?.name ?? null,
-    amount: formatCurrency(amount),
-    discount: formatCurrency(discount),
-    total: formatCurrency(net),
+    amount: formatCurrency(amount, currency),
+    discount: formatCurrency(discount, currency),
+    total: formatCurrency(net, currency),
     dueDate: formatDate(invoice.dueDate),
     issuedDate: formatDate(invoice.createdAt),
     paidDate: invoice.paidDate ? formatDate(invoice.paidDate) : null,
@@ -70,6 +72,7 @@ async function buildInvoiceData(invoiceId: string): Promise<{
     invoiceNumber: invoice.invoiceNumber,
     dueDate: invoice.dueDate,
     net,
+    currency,
   };
 }
 
@@ -233,7 +236,7 @@ export const invoicesRouter = createTRPCRouter({
       const vars = {
         studentName: built.studentName,
         invoiceNumber: built.invoiceNumber,
-        amount: formatCurrency(built.net),
+        amount: formatCurrency(built.net, built.currency),
         dueDate: formatDate(built.dueDate),
       };
 

@@ -20,7 +20,10 @@ export default async function AttendancePage({
 
   const sp = await searchParams;
   const courseId = typeof sp.courseId === "string" ? sp.courseId : "";
-  const date = typeof sp.date === "string" ? sp.date : "";
+  // Default to today so the roster is immediately usable; any other date is
+  // still selectable via the picker (persisted in the URL).
+  const today = new Date().toISOString().slice(0, 10);
+  const date = typeof sp.date === "string" && sp.date ? sp.date : today;
 
   const courses = await api.attendance.courseOptions();
 

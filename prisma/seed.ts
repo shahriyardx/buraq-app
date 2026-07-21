@@ -1,16 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
-import { generateStudentId } from "../src/lib/ids";
+import { generateInstructorId, generateStudentId } from "../src/lib/ids";
 import { prisma } from "../src/lib/prisma";
 
 type NewUser = {
   name: string;
   email: string;
   password: string;
-  role: "ADMIN" | "STUDENT";
+  role: "ADMIN" | "INSTRUCTOR" | "STUDENT";
   phone?: string;
   gender?: "MALE" | "FEMALE" | "OTHER";
   address?: string;
+  bio?: string;
+  specialties?: string;
 };
 
 async function createUser(u: NewUser) {
@@ -28,6 +30,9 @@ async function createUser(u: NewUser) {
       role: u.role,
       status: "ACTIVE",
       studentId: u.role === "STUDENT" ? generateStudentId() : null,
+      instructorId: u.role === "INSTRUCTOR" ? generateInstructorId() : null,
+      bio: u.bio,
+      specialties: u.specialties,
       phone: u.phone,
       gender: u.gender,
       address: u.address,
@@ -120,6 +125,39 @@ async function main() {
     data: { isSuperAdmin: true },
   });
 
+  // ── Instructors ───────────────────────────────────────────────────────────
+  const instructorData = [
+    {
+      name: "Sarah Miller",
+      email: "sarah@buraq.test",
+      specialties: "Horsemanship, Grooming",
+      bio: "Certified riding coach with 12 years teaching beginners.",
+    },
+    {
+      name: "James Cole",
+      email: "james@buraq.test",
+      specialties: "Show Jumping",
+      bio: "Former national show-jumping competitor.",
+    },
+    {
+      name: "Elena Petrova",
+      email: "elena@buraq.test",
+      specialties: "Dressage",
+      bio: "Dressage judge and advanced technique specialist.",
+    },
+  ];
+  const instructors = await Promise.all(
+    instructorData.map((i) =>
+      createUser({
+        ...i,
+        password: "Instructor@123",
+        role: "INSTRUCTOR",
+        phone: "+1 (555) 030-2000",
+      }),
+    ),
+  );
+  const instructorByName = new Map(instructors.map((i) => [i.name, i]));
+
   const students = await Promise.all(
     [
       {
@@ -188,8 +226,21 @@ async function main() {
   ];
   const courses = [];
   for (const c of courseData) {
+    const instructorUserId = instructorByName.get(c.instructor)?.id ?? null;
     const existing = await prisma.course.findFirst({ where: { name: c.name } });
-    courses.push(existing ?? (await prisma.course.create({ data: c })));
+    if (existing) {
+      // Backfill the instructor link on re-seed.
+      courses.push(
+        await prisma.course.update({
+          where: { id: existing.id },
+          data: { instructorUserId },
+        }),
+      );
+    } else {
+      courses.push(
+        await prisma.course.create({ data: { ...c, instructorUserId } }),
+      );
+    }
   }
 
   // ── Class sessions (next 7 days) ──────────────────────────────────────────
@@ -207,6 +258,7 @@ async function main() {
           startTime: "16:00",
           endTime: "17:30",
           instructor: course.instructor,
+          instructorUserId: course.instructorUserId,
         },
       });
     }
@@ -273,8 +325,9 @@ async function main() {
   }
 
   console.log("Seed complete.");
-  console.log("Admin login:   admin@buraq.test / Admin@12345");
-  console.log("Student login: ayesha@buraq.test / Student@123");
+  console.log("Admin login:      admin@buraq.test / Admin@12345");
+  console.log("Instructor login: sarah@buraq.test / Instructor@123");
+  console.log("Student login:    ayesha@buraq.test / Student@123");
 }
 
 main()

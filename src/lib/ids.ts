@@ -19,6 +19,11 @@ export function generateStudentId() {
   return `BURAQ-STU-${randomDigits(6)}`;
 }
 
+/** BURAQ-INS-XXXXXX */
+export function generateInstructorId() {
+  return `BURAQ-INS-${randomDigits(6)}`;
+}
+
 /** BURAQ-YYYY-XXXXXX */
 export function generateCertificateId(year = new Date().getFullYear()) {
   return `BURAQ-${year}-${randomAlphaNum(6)}`;

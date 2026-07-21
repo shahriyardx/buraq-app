@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { requireStudent } from "@/lib/dal";
 import { formatCurrency } from "@/lib/format";
+import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
 import { StudentInvoicesTable } from "./invoices-table";
 
@@ -11,8 +12,8 @@ export const metadata: Metadata = { title: "Invoices" };
 export default async function StudentInvoicesPage() {
   await requireStudent();
 
-  const { rows, outstandingCount, outstandingTotal } =
-    await api.invoices.mine();
+  const [{ rows, outstandingCount, outstandingTotal }, currency] =
+    await Promise.all([api.invoices.mine(), getCurrency()]);
 
   return (
     <>
@@ -32,7 +33,7 @@ export default async function StudentInvoicesPage() {
             <p className="text-sm">
               You have an outstanding balance of{" "}
               <span className="font-semibold">
-                {formatCurrency(outstandingTotal)}
+                {formatCurrency(outstandingTotal, currency)}
               </span>
               . Please contact the office to settle your account.
             </p>
@@ -40,7 +41,7 @@ export default async function StudentInvoicesPage() {
         </div>
       )}
 
-      <StudentInvoicesTable invoices={rows} />
+      <StudentInvoicesTable invoices={rows} currency={currency} />
     </>
   );
 }

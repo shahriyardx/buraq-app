@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/dal";
+import { getSession, panelFor } from "@/lib/dal";
 import { api } from "@/trpc/server";
 
 export default async function RootPage() {
@@ -8,5 +8,5 @@ export default async function RootPage() {
     if (await api.bootstrap.needsSetup()) redirect("/setup");
     redirect("/login");
   }
-  redirect(session.user.role === "ADMIN" ? "/admin" : "/student");
+  redirect(panelFor(session.user.role));
 }

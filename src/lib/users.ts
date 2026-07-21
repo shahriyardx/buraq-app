@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { prisma } from "@/lib/prisma";
 
-type Role = "ADMIN" | "STUDENT";
+type Role = "ADMIN" | "INSTRUCTOR" | "STUDENT";
 
 /**
  * Creates a user + better-auth credential account directly (bypasses the
@@ -15,6 +15,9 @@ export async function createUserWithPassword(input: {
   password: string;
   role: Role;
   studentId?: string | null;
+  instructorId?: string | null;
+  bio?: string | null;
+  specialties?: string | null;
   phone?: string | null;
   dob?: Date | null;
   gender?: "MALE" | "FEMALE" | "OTHER" | null;
@@ -39,6 +42,9 @@ export async function createUserWithPassword(input: {
       role: input.role,
       status: "ACTIVE",
       studentId: input.studentId ?? null,
+      instructorId: input.instructorId ?? null,
+      bio: input.bio ?? null,
+      specialties: input.specialties ?? null,
       phone: input.phone ?? null,
       dob: input.dob ?? null,
       gender: input.gender ?? null,

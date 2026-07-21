@@ -38,6 +38,18 @@ export const adminProcedure = t.procedure.use(({ ctx, next }) => {
   return next({ ctx: { session: ctx.session } });
 });
 
+/** Instructor only. */
+export const instructorProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.session) throw new TRPCError({ code: "UNAUTHORIZED" });
+  if (ctx.session.user.role !== "INSTRUCTOR") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Instructors only" });
+  }
+  if (ctx.session.user.status === "INACTIVE") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Account inactive" });
+  }
+  return next({ ctx: { session: ctx.session } });
+});
+
 /** Student only. */
 export const studentProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session) throw new TRPCError({ code: "UNAUTHORIZED" });

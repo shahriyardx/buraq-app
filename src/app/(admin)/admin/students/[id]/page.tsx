@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireAdmin } from "@/lib/dal";
 import { formatCurrency, formatDate, initials } from "@/lib/format";
+import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
 import { StudentFormDialog } from "../student-form-dialog";
 
@@ -35,6 +36,7 @@ export default async function StudentProfilePage({
   });
   if (!student) notFound();
 
+  const currency = await getCurrency();
   const present = student.attendances.filter(
     (a) => a.status === "PRESENT",
   ).length;
@@ -254,7 +256,9 @@ export default async function StudentProfilePage({
                           {inv.invoiceNumber}
                         </TableCell>
                         <TableCell>{inv.courseName ?? "—"}</TableCell>
-                        <TableCell>{formatCurrency(inv.amount)}</TableCell>
+                        <TableCell>
+                          {formatCurrency(inv.amount, currency)}
+                        </TableCell>
                         <TableCell>{formatDate(inv.dueDate)}</TableCell>
                         <TableCell>
                           <StatusBadge status={inv.status} />

@@ -7,6 +7,7 @@ export type NavItem = {
 export const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: "home" },
   { label: "Students", href: "/admin/students", icon: "users" },
+  { label: "Instructors", href: "/admin/instructors", icon: "clipboard" },
   { label: "Attendance", href: "/admin/attendance", icon: "calendar-check" },
   { label: "Courses", href: "/admin/courses", icon: "book-open" },
   { label: "Certificates", href: "/admin/certificates", icon: "award" },
@@ -14,6 +15,15 @@ export const adminNav: NavItem[] = [
   { label: "Announcements", href: "/admin/announcements", icon: "megaphone" },
   { label: "Support", href: "/admin/support", icon: "life-buoy" },
   { label: "Settings", href: "/admin/settings", icon: "settings" },
+];
+
+export const instructorNav: NavItem[] = [
+  { label: "Dashboard", href: "/instructor", icon: "home" },
+  { label: "My Courses", href: "/instructor/courses", icon: "book-open" },
+  { label: "Schedule", href: "/instructor/schedule", icon: "calendar-check" },
+  { label: "Attendance", href: "/instructor/attendance", icon: "clipboard" },
+  { label: "Students", href: "/instructor/students", icon: "users" },
+  { label: "Settings", href: "/instructor/settings", icon: "settings" },
 ];
 
 export const studentNav: NavItem[] = [

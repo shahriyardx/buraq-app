@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
 import { CourseFormDialog } from "../course-form-dialog";
 import { ClassSchedule } from "./class-schedule";
@@ -35,6 +36,7 @@ export default async function CourseDetailPage({
     throw err;
   });
 
+  const currency = await getCurrency();
   const available = course.available;
   const sessions = (await api.courses.classSessions({ courseId: id })).map(
     (s) => ({
@@ -53,7 +55,7 @@ export default async function CourseDetailPage({
       "Duration",
       course.durationWeeks != null ? `${course.durationWeeks} wks` : "—",
     ],
-    ["Price", formatCurrency(course.price)],
+    ["Price", formatCurrency(course.price, currency)],
     ["Schedule", course.schedule ?? "—"],
     [
       "Enrolled",
@@ -80,6 +82,7 @@ export default async function CourseDetailPage({
             price: course.price,
             maxStudents: course.maxStudents,
             instructor: course.instructor,
+            instructorUserId: course.instructorUserId,
             schedule: course.schedule,
           }}
           trigger={

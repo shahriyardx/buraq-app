@@ -48,6 +48,7 @@ export const settingsRouter = createTRPCRouter({
       phone: settings?.phone ?? null,
       email: settings?.email ?? null,
       officeHours: settings?.officeHours ?? null,
+      currency: settings?.currency ?? "BDT",
     };
 
     const byKey = new Map(emailTemplates.map((t) => [t.key, t]));
@@ -87,6 +88,10 @@ export const settingsRouter = createTRPCRouter({
         phone: z.string().nullish(),
         email: z.string().email("Valid email required").nullish(),
         officeHours: z.string().nullish(),
+        currency: z
+          .string()
+          .regex(/^[A-Z]{3}$/, "Use a 3-letter ISO currency code")
+          .nullish(),
         logoUrl: z.string().url().nullish(),
       }),
     )
@@ -97,6 +102,7 @@ export const settingsRouter = createTRPCRouter({
         phone: input.phone ?? null,
         email: input.email ?? null,
         officeHours: input.officeHours ?? null,
+        ...(input.currency ? { currency: input.currency } : {}),
         ...(input.logoUrl ? { logoUrl: input.logoUrl } : {}),
       };
 

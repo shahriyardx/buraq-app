@@ -34,6 +34,7 @@ export type CourseRow = {
   schedule: string | null;
   maxStudents: number | null;
   instructor: string | null;
+  instructorUserId: string | null;
   status: string;
   enrolledCount: number;
 };
@@ -103,6 +104,7 @@ function RowActions({ course }: { course: CourseRow }) {
           price: course.price,
           maxStudents: course.maxStudents,
           instructor: course.instructor,
+          instructorUserId: course.instructorUserId,
           schedule: course.schedule,
         }}
       />
@@ -110,7 +112,13 @@ function RowActions({ course }: { course: CourseRow }) {
   );
 }
 
-export function CoursesTable({ courses }: { courses: CourseRow[] }) {
+export function CoursesTable({
+  courses,
+  currency,
+}: {
+  courses: CourseRow[];
+  currency: string;
+}) {
   const columns: Column<CourseRow>[] = [
     {
       key: "name",
@@ -130,7 +138,7 @@ export function CoursesTable({ courses }: { courses: CourseRow[] }) {
     {
       key: "price",
       header: "Price",
-      render: (c) => formatCurrency(c.price),
+      render: (c) => formatCurrency(c.price, currency),
     },
     {
       key: "enrolled",

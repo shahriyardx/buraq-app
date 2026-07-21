@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { requireStudent } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
 import { EnrollButton } from "./enroll-button";
 
@@ -26,7 +27,10 @@ export const metadata: Metadata = { title: "My Courses" };
 
 export default async function StudentCoursesPage() {
   await requireStudent();
-  const { current, history, browse } = await api.courses.myCourses();
+  const [{ current, history, browse }, currency] = await Promise.all([
+    api.courses.myCourses(),
+    getCurrency(),
+  ]);
 
   return (
     <>
@@ -180,7 +184,7 @@ export default async function StudentCoursesPage() {
                         {c.instructor ?? "—"}
                       </Meta>
                       <Meta icon={GraduationCap} label="Price">
-                        {formatCurrency(c.price)}
+                        {formatCurrency(c.price, currency)}
                       </Meta>
                     </dl>
                     {c.requested ? (

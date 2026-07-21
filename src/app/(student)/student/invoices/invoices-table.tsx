@@ -17,57 +17,61 @@ export type StudentInvoiceRow = {
   pdfUrl: string | null;
 };
 
-const columns: Column<StudentInvoiceRow>[] = [
-  {
-    key: "invoiceNumber",
-    header: "Invoice #",
-    render: (i) => <span className="font-mono text-xs">{i.invoiceNumber}</span>,
-  },
-  {
-    key: "courseName",
-    header: "Course",
-    render: (i) => i.courseName ?? "—",
-  },
-  {
-    key: "net",
-    header: "Amount",
-    render: (i) => formatCurrency(i.net),
-  },
-  {
-    key: "dueDate",
-    header: "Due",
-    render: (i) => formatDate(i.dueDate),
-  },
-  {
-    key: "status",
-    header: "Status",
-    render: (i) => <StatusBadge status={i.status} />,
-  },
-  {
-    key: "pdfUrl",
-    header: "",
-    className: "w-24 text-right",
-    render: (i) =>
-      i.pdfUrl ? (
-        <Link
-          href={i.pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonVariants({ variant: "outline", size: "sm" })}
-        >
-          <Download className="mr-2 size-4" /> PDF
-        </Link>
-      ) : (
-        <span className="text-muted-foreground">—</span>
-      ),
-  },
-];
-
 export function StudentInvoicesTable({
   invoices,
+  currency,
 }: {
   invoices: StudentInvoiceRow[];
+  currency: string;
 }) {
+  const columns: Column<StudentInvoiceRow>[] = [
+    {
+      key: "invoiceNumber",
+      header: "Invoice #",
+      render: (i) => (
+        <span className="font-mono text-xs">{i.invoiceNumber}</span>
+      ),
+    },
+    {
+      key: "courseName",
+      header: "Course",
+      render: (i) => i.courseName ?? "—",
+    },
+    {
+      key: "net",
+      header: "Amount",
+      render: (i) => formatCurrency(i.net, currency),
+    },
+    {
+      key: "dueDate",
+      header: "Due",
+      render: (i) => formatDate(i.dueDate),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (i) => <StatusBadge status={i.status} />,
+    },
+    {
+      key: "pdfUrl",
+      header: "",
+      className: "w-24 text-right",
+      render: (i) =>
+        i.pdfUrl ? (
+          <Link
+            href={i.pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            <Download className="mr-2 size-4" /> PDF
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+  ];
+
   return (
     <DataTable
       columns={columns}

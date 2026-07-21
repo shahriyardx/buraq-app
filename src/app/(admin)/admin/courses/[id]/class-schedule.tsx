@@ -25,8 +25,17 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatDate } from "@/lib/format";
 import { trpc } from "@/trpc/client";
+
+const UNASSIGNED = "__unassigned__";
 
 export type SessionRow = {
   id: string;
@@ -40,7 +49,7 @@ const schema = z.object({
   date: z.string().min(1, "Date is required"),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
-  instructor: z.string().optional(),
+  instructorUserId: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -49,13 +58,28 @@ function AddSessionDialog({ courseId }: { courseId: string }) {
   const [open, setOpen] = useState(false);
   const { control, handleSubmit, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { date: "", startTime: "", endTime: "", instructor: "" },
+    defaultValues: {
+      date: "",
+      startTime: "",
+      endTime: "",
+      instructorUserId: undefined,
+    },
   });
+  const instructors = trpc.instructors.options.useQuery();
   const add = trpc.courses.addClassSession.useMutation();
 
   async function onSubmit(values: FormValues) {
     try {
-      await add.mutateAsync({ courseId, ...values });
+      await add.mutateAsync({
+        courseId,
+        date: values.date,
+        startTime: values.startTime,
+        endTime: values.endTime,
+        instructorUserId:
+          values.instructorUserId && values.instructorUserId !== UNASSIGNED
+            ? values.instructorUserId
+            : null,
+      });
       toast.success("Class session added.");
       setOpen(false);
       reset();
@@ -124,11 +148,28 @@ function AddSessionDialog({ courseId }: { courseId: string }) {
             </div>
             <Controller
               control={control}
-              name="instructor"
+              name="instructorUserId"
               render={({ field }) => (
                 <Field>
-                  <FieldLabel htmlFor="cs-instr">Instructor</FieldLabel>
-                  <Input id="cs-instr" {...field} />
+                  <FieldLabel>Instructor</FieldLabel>
+                  <Select
+                    value={field.value ?? UNASSIGNED}
+                    onValueChange={(v) =>
+                      field.onChange(v === UNASSIGNED ? undefined : v)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                      {instructors.data?.map((i) => (
+                        <SelectItem key={i.id} value={i.id}>
+                          {i.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               )}
             />

@@ -33,11 +33,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/trpc/client";
 
+const UNASSIGNED = "__unassigned__";
+
 const schema = z.object({
   name: z.string().min(2, "Name is required"),
   description: z.string().optional(),
   level: z.string().optional(),
-  instructor: z.string().optional(),
+  instructorUserId: z.string().optional(),
   durationWeeks: z.string().optional(),
   price: z
     .string()
@@ -57,6 +59,7 @@ export type CourseFormValues = {
   price: string;
   maxStudents: number | null;
   instructor: string | null;
+  instructorUserId: string | null;
   schedule: string | null;
 };
 
@@ -91,7 +94,7 @@ export function CourseFormDialog({
       name: course?.name ?? "",
       description: course?.description ?? "",
       level: course?.level ?? undefined,
-      instructor: course?.instructor ?? "",
+      instructorUserId: course?.instructorUserId ?? undefined,
       durationWeeks:
         course?.durationWeeks != null ? String(course.durationWeeks) : "",
       price: course?.price ?? "0",
@@ -103,6 +106,7 @@ export function CourseFormDialog({
 
   const create = trpc.courses.create.useMutation();
   const update = trpc.courses.update.useMutation();
+  const instructors = trpc.instructors.options.useQuery();
   const pending = create.isPending || update.isPending;
 
   async function onSubmit(values: FormValues) {
@@ -110,7 +114,10 @@ export function CourseFormDialog({
       name: values.name,
       description: values.description || null,
       level: values.level || null,
-      instructor: values.instructor || null,
+      instructorUserId:
+        values.instructorUserId && values.instructorUserId !== UNASSIGNED
+          ? values.instructorUserId
+          : null,
       durationWeeks: toInt(values.durationWeeks),
       price: Number(values.price),
       maxStudents: toInt(values.maxStudents),
@@ -207,11 +214,28 @@ export function CourseFormDialog({
 
             <Controller
               control={control}
-              name="instructor"
+              name="instructorUserId"
               render={({ field }) => (
                 <Field>
-                  <FieldLabel htmlFor="instructor">Instructor</FieldLabel>
-                  <Input id="instructor" {...field} />
+                  <FieldLabel>Instructor</FieldLabel>
+                  <Select
+                    value={field.value ?? UNASSIGNED}
+                    onValueChange={(v) =>
+                      field.onChange(v === UNASSIGNED ? undefined : v)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                      {instructors.data?.map((i) => (
+                        <SelectItem key={i.id} value={i.id}>
+                          {i.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               )}
             />

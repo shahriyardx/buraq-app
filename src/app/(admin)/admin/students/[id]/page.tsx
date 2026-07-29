@@ -21,6 +21,7 @@ import { formatCurrency, formatDate, initials } from "@/lib/format";
 import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
 import { StudentFormDialog } from "../student-form-dialog";
+import { EnrollCourseDialog } from "./enroll-course-dialog";
 
 export const metadata: Metadata = { title: "Student profile" };
 
@@ -36,7 +37,12 @@ export default async function StudentProfilePage({
   });
   if (!student) notFound();
 
-  const currency = await getCurrency();
+  const [currency, allCourses] = await Promise.all([
+    getCurrency(),
+    api.students.courseOptions(),
+  ]);
+  const enrolledIds = new Set(student.enrollments.map((e) => e.courseId));
+  const availableCourses = allCourses.filter((c) => !enrolledIds.has(c.id));
   const present = student.attendances.filter(
     (a) => a.status === "PRESENT",
   ).length;
@@ -114,6 +120,12 @@ export default async function StudentProfilePage({
           </TabsList>
 
           <TabsContent value="courses">
+            <div className="mb-3 flex justify-end">
+              <EnrollCourseDialog
+                studentId={student.id}
+                courses={availableCourses}
+              />
+            </div>
             <Card className="p-0">
               <Table>
                 <TableHeader>

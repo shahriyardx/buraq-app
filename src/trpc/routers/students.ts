@@ -103,6 +103,7 @@ export const studentsRouter = createTRPCRouter({
         createdAt: s.createdAt,
         enrollments: s.enrollments.map((e) => ({
           id: e.id,
+          courseId: e.courseId,
           courseName: e.course.name,
           progress: e.progress,
           status: e.status,

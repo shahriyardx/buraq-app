@@ -6,7 +6,7 @@ import { enrollStudent } from "@/lib/enrollments";
 import { generateStudentId } from "@/lib/ids";
 import { prisma } from "@/lib/prisma";
 import { createUserWithPassword } from "@/lib/users";
-import { adminProcedure, createTRPCRouter } from "../init";
+import { adminProcedure, createTRPCRouter, publicProcedure } from "../init";
 
 const genderEnum = z.enum(["MALE", "FEMALE", "OTHER"]);
 
@@ -27,6 +27,29 @@ function toDate(v?: string | null) {
 }
 
 export const studentsRouter = createTRPCRouter({
+  /** Public self-registration → creates an ACTIVE student account. */
+  register: publicProcedure
+    .input(
+      profileInput.extend({
+        password: z.string().min(8, "Password must be at least 8 characters"),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const student = await createUserWithPassword({
+        name: input.name,
+        email: input.email,
+        password: input.password,
+        role: "STUDENT",
+        studentId: generateStudentId(),
+        phone: input.phone ?? null,
+        gender: input.gender ?? null,
+        address: input.address ?? null,
+        dob: toDate(input.dob),
+        photoUrl: input.photoUrl ?? null,
+      });
+      return { id: student.id, name: student.name };
+    }),
+
   list: adminProcedure.query(async () => {
     const students = await prisma.user.findMany({
       where: { role: "STUDENT" },

@@ -106,6 +106,16 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       >
         {isSubmitting ? "Saddling up…" : "Sign in"}
       </Button>
+
+      <p className="text-center text-sm text-[#20302a]/70">
+        New rider?{" "}
+        <Link
+          href="/register"
+          className="font-medium text-[#a5772f] hover:underline"
+        >
+          Create an account
+        </Link>
+      </p>
     </form>
   );
 }

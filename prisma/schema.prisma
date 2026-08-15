@@ -186,6 +186,7 @@ model Course {
   schedule     String?
   maxStudents  Int?         // deprecated: no enrollment cap (kept for back-compat)
   maxBookingsPerWeek Int    @default(1) // slots a student may book per week
+  enrollmentPaused Boolean  @default(false) // block student self-enrollment
   instructor   String?      // legacy/display name; mirrors instructorUser.name when set
   instructorUserId String?
   instructorUser   User?    @relation("CourseInstructor", fields: [instructorUserId], references: [id], onDelete: SetNull)

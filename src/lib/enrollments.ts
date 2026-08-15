@@ -13,12 +13,21 @@ export async function enrollStudent(input: {
   courseId: string;
   status?: "PENDING" | "ACTIVE";
   autoInvoice?: boolean;
+  /** Create the invoice already PAID (admin-covered) instead of UNPAID. */
+  invoicePaid?: boolean;
 }) {
-  const { studentId, courseId, status = "ACTIVE", autoInvoice = true } = input;
+  const {
+    studentId,
+    courseId,
+    status = "ACTIVE",
+    autoInvoice = true,
+    invoicePaid = false,
+  } = input;
 
   const course = await prisma.course.findUnique({ where: { id: courseId } });
   if (!course) throw new Error("Course not found.");
 
+  const now = new Date();
   const existing = await prisma.enrollment.findUnique({
     where: { studentId_courseId: { studentId, courseId } },
   });
@@ -26,37 +35,47 @@ export async function enrollStudent(input: {
   const enrollment = existing
     ? await prisma.enrollment.update({
         where: { id: existing.id },
-        data: { status },
+        data: {
+          status,
+          ...(status === "ACTIVE" && !existing.approvedAt
+            ? { startDate: now, approvedAt: now }
+            : {}),
+        },
       })
     : await prisma.enrollment.create({
         data: {
           studentId,
           courseId,
           status,
-          startDate: new Date(),
-          approvedAt: status === "ACTIVE" ? new Date() : null,
+          startDate: now,
+          approvedAt: status === "ACTIVE" ? now : null,
         },
       });
 
-  // Only invoice fresh, active enrollments with a positive price.
-  if (
-    autoInvoice &&
-    !existing &&
-    status === "ACTIVE" &&
-    Number(course.price) > 0
-  ) {
-    const due = new Date();
-    due.setDate(due.getDate() + 14);
-    await prisma.invoice.create({
-      data: {
-        invoiceNumber: generateInvoiceNumber(),
+  // Bill the course price when there is no open invoice yet.
+  if (autoInvoice && Number(course.price) > 0) {
+    const openInvoice = await prisma.invoice.findFirst({
+      where: {
         studentId,
         courseId,
-        amount: course.price,
-        dueDate: due,
-        status: "UNPAID",
+        status: { in: ["UNPAID", "OVERDUE", "PROCESSING"] },
       },
     });
+    if (!openInvoice) {
+      const due = new Date(now);
+      due.setDate(due.getDate() + 14);
+      await prisma.invoice.create({
+        data: {
+          invoiceNumber: generateInvoiceNumber(),
+          studentId,
+          courseId,
+          amount: course.price,
+          dueDate: due,
+          status: invoicePaid ? "PAID" : "UNPAID",
+          ...(invoicePaid ? { paidDate: now, paymentMethod: "CASH" } : {}),
+        },
+      });
+    }
   }
 
   // Welcome email on a newly-activated enrollment.

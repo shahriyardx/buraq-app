@@ -191,6 +191,10 @@ export default async function StudentCoursesPage() {
                       <Button size="sm" className="w-full" disabled>
                         Requested
                       </Button>
+                    ) : c.paused ? (
+                      <Button size="sm" className="w-full" disabled>
+                        Enrollment paused
+                      </Button>
                     ) : (
                       <EnrollButton courseId={c.id} courseName={c.name} />
                     )}

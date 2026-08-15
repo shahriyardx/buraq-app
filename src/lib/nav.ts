@@ -10,6 +10,7 @@ export const adminNav: NavItem[] = [
   { label: "Instructors", href: "/admin/instructors", icon: "clipboard" },
   { label: "Attendance", href: "/admin/attendance", icon: "calendar-check" },
   { label: "Courses", href: "/admin/courses", icon: "book-open" },
+  { label: "Calendar", href: "/admin/calendar", icon: "calendar-check" },
   { label: "Certificates", href: "/admin/certificates", icon: "award" },
   { label: "Invoices", href: "/admin/invoices", icon: "receipt" },
   { label: "Announcements", href: "/admin/announcements", icon: "megaphone" },

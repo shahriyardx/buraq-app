@@ -29,6 +29,7 @@ import { trpc } from "@/trpc/client";
 
 const schema = z.object({
   studentId: z.string().min(1, "Please select a student."),
+  mode: z.enum(["paid", "pay"]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -44,13 +45,17 @@ export function EnrollStudentDialog({
   const [open, setOpen] = useState(false);
   const { control, handleSubmit, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { studentId: "" },
+    defaultValues: { studentId: "", mode: "paid" },
   });
   const enroll = trpc.courses.enroll.useMutation();
 
   async function onSubmit(values: FormValues) {
     try {
-      await enroll.mutateAsync({ courseId, studentId: values.studentId });
+      await enroll.mutateAsync({
+        courseId,
+        studentId: values.studentId,
+        mode: values.mode,
+      });
       toast.success("Student enrolled.");
       setOpen(false);
       reset();
@@ -102,6 +107,28 @@ export function EnrollStudentDialog({
                 {fieldState.invalid && (
                   <FieldError errors={[fieldState.error]} />
                 )}
+              </Field>
+            )}
+          />
+          <Controller
+            control={control}
+            name="mode"
+            render={({ field }) => (
+              <Field className="mt-3">
+                <FieldLabel>Payment</FieldLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">
+                      Mark as paid (no charge to student)
+                    </SelectItem>
+                    <SelectItem value="pay">
+                      Student must pay the invoice
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
             )}
           />

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldError,
@@ -47,6 +48,7 @@ const schema = z.object({
     .string()
     .refine((v) => v.trim() !== "" && Number(v) >= 0, "Price must be positive"),
   maxBookingsPerWeek: z.string().optional(),
+  enrollmentPaused: z.boolean().optional(),
   schedule: z.string().optional(),
   slots: z
     .array(
@@ -81,6 +83,7 @@ export function CourseCreateForm() {
       durationWeeks: "8",
       price: "0",
       maxBookingsPerWeek: "1",
+      enrollmentPaused: false,
       schedule: "",
       slots: [],
     },
@@ -110,6 +113,7 @@ export function CourseCreateForm() {
         durationWeeks: toInt(values.durationWeeks),
         price: Number(values.price),
         maxBookingsPerWeek: toInt(values.maxBookingsPerWeek) ?? 1,
+        enrollmentPaused: values.enrollmentPaused ?? false,
         schedule: values.schedule || null,
         slots: slotsPayload.length ? slotsPayload : undefined,
       });
@@ -260,6 +264,31 @@ export function CourseCreateForm() {
                   placeholder="e.g. Mon & Wed 4pm"
                   {...field}
                 />
+              </Field>
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="enrollmentPaused"
+            render={({ field }) => (
+              <Field
+                orientation="horizontal"
+                className="items-start gap-3 sm:col-span-2"
+              >
+                <Checkbox
+                  id="enrollmentPaused"
+                  checked={field.value ?? false}
+                  onCheckedChange={(c) => field.onChange(c === true)}
+                />
+                <div className="space-y-0.5">
+                  <FieldLabel htmlFor="enrollmentPaused">
+                    Pause new enrollment
+                  </FieldLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Students can't self-enroll; admins still can.
+                  </p>
+                </div>
               </Field>
             )}
           />

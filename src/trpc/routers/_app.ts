@@ -13,6 +13,7 @@ import { invoicesRouter } from "./invoices";
 import { settingsRouter } from "./settings";
 import { studentsRouter } from "./students";
 import { supportRouter } from "./support";
+import { usersRouter } from "./users";
 
 /**
  * Root tRPC router. One domain router per module.
@@ -29,6 +30,7 @@ export const appRouter = createTRPCRouter({
   settings: settingsRouter,
   announcements: announcementsRouter,
   bookings: bookingsRouter,
+  users: usersRouter,
   dashboard: dashboardRouter,
   account: accountRouter,
   bootstrap: bootstrapRouter,

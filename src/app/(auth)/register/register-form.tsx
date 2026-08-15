@@ -102,13 +102,17 @@ export function RegisterForm({ r2Configured }: { r2Configured: boolean }) {
     }
   }
 
+  const selectClass = `${inputClass} !h-11`;
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+    >
       <Controller
         control={control}
         name="name"
         render={({ field, fieldState }) => (
-          <Field data-invalid={fieldState.invalid}>
+          <Field data-invalid={fieldState.invalid} className="sm:col-span-2">
             <FieldLabel htmlFor="name" className="text-[#20302a]/80">
               Full name
             </FieldLabel>
@@ -165,42 +169,40 @@ export function RegisterForm({ r2Configured }: { r2Configured: boolean }) {
         )}
       />
 
-      <div className="grid grid-cols-2 gap-3">
-        <Controller
-          control={control}
-          name="dob"
-          render={({ field }) => (
-            <Field>
-              <FieldLabel htmlFor="dob" className="text-[#20302a]/80">
-                Date of birth
-              </FieldLabel>
-              <Input id="dob" type="date" className={inputClass} {...field} />
-            </Field>
-          )}
-        />
-        <Controller
-          control={control}
-          name="gender"
-          render={({ field }) => (
-            <Field>
-              <FieldLabel className="text-[#20302a]/80">Gender</FieldLabel>
-              <Select
-                value={field.value ?? ""}
-                onValueChange={(v) => field.onChange(v || undefined)}
-              >
-                <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MALE">Male</SelectItem>
-                  <SelectItem value="FEMALE">Female</SelectItem>
-                  <SelectItem value="OTHER">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
-        />
-      </div>
+      <Controller
+        control={control}
+        name="dob"
+        render={({ field }) => (
+          <Field>
+            <FieldLabel htmlFor="dob" className="text-[#20302a]/80">
+              Date of birth
+            </FieldLabel>
+            <Input id="dob" type="date" className={inputClass} {...field} />
+          </Field>
+        )}
+      />
+      <Controller
+        control={control}
+        name="gender"
+        render={({ field }) => (
+          <Field>
+            <FieldLabel className="text-[#20302a]/80">Gender</FieldLabel>
+            <Select
+              value={field.value ?? ""}
+              onValueChange={(v) => field.onChange(v || undefined)}
+            >
+              <SelectTrigger className={selectClass}>
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MALE">Male</SelectItem>
+                <SelectItem value="FEMALE">Female</SelectItem>
+                <SelectItem value="OTHER">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+      />
 
       <Controller
         control={control}
@@ -229,7 +231,7 @@ export function RegisterForm({ r2Configured }: { r2Configured: boolean }) {
       />
 
       {r2Configured && (
-        <Field>
+        <Field className="sm:col-span-2">
           <FieldLabel htmlFor="photo" className="text-[#20302a]/80">
             Photo
           </FieldLabel>
@@ -246,12 +248,12 @@ export function RegisterForm({ r2Configured }: { r2Configured: boolean }) {
       <Button
         type="submit"
         disabled={pending}
-        className="h-11 w-full bg-[#7a5a2c] text-[#f4ece0] shadow-sm transition-colors hover:bg-[#6a4d25]"
+        className="mt-1 h-11 w-full bg-[#7a5a2c] text-[#f4ece0] shadow-sm transition-colors hover:bg-[#6a4d25] sm:col-span-2"
       >
         {pending ? "Creating…" : "Create account"}
       </Button>
 
-      <p className="text-center text-sm text-[#20302a]/70">
+      <p className="text-center text-sm text-[#20302a]/70 sm:col-span-2">
         Already have an account?{" "}
         <Link
           href="/login"

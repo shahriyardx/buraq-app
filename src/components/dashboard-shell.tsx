@@ -12,6 +12,7 @@ import {
   Menu,
   Receipt,
   Settings,
+  Shield,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -48,6 +49,7 @@ const ICONS: Record<string, LucideIcon> = {
   receipt: Receipt,
   "life-buoy": LifeBuoy,
   megaphone: Megaphone,
+  shield: Shield,
   settings: Settings,
 };
 

@@ -174,39 +174,61 @@ export function SlotManager({
   courseId: string;
   slots: SlotRow[];
 }) {
+  // Group ranges by weekday (Monday-first), so a day shows once with its
+  // ranges listed on the right.
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const byDay = order
+    .map((wd) => ({
+      weekday: wd,
+      ranges: slots
+        .filter((s) => s.weekday === wd)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    }))
+    .filter((g) => g.ranges.length > 0);
+
   return (
     <Card className="p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="font-semibold">Training slots</p>
+          <p className="font-semibold">Training days & slots</p>
           <p className="text-sm text-muted-foreground">
-            Weekly windows students can book. Seats = capacity per week.
+            Each range splits into single-rider sessions of the chosen length.
           </p>
         </div>
         <AddSlotDialog courseId={courseId} />
       </div>
-      {slots.length === 0 ? (
+      {byDay.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           No training slots yet.
         </p>
       ) : (
-        <ul className="divide-y divide-border">
-          {slots.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center justify-between gap-4 py-2.5 text-sm"
+        <div className="divide-y divide-border">
+          {byDay.map((g) => (
+            <div
+              key={g.weekday}
+              className="grid grid-cols-[110px_1fr] gap-4 py-3"
             >
-              <span>
-                <span className="font-medium">{WEEKDAYS[s.weekday]}</span>
-                <span className="text-muted-foreground">
-                  {" · "}
-                  {s.startTime}–{s.endTime} · {s.sessionMinutes}min sessions
-                </span>
-              </span>
-              <DeleteSlot id={s.id} bookingCount={s.bookingCount} />
-            </li>
+              <p className="pt-1 font-medium">{WEEKDAYS[g.weekday]}</p>
+              <ul className="space-y-1.5">
+                {g.ranges.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span>
+                      {s.startTime}–{s.endTime}
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {s.sessionMinutes}min sessions
+                      </span>
+                    </span>
+                    <DeleteSlot id={s.id} bookingCount={s.bookingCount} />
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </Card>
   );

@@ -19,7 +19,6 @@ import { requireAdmin } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
-import { CourseFormDialog } from "../course-form-dialog";
 import { ClassSchedule } from "./class-schedule";
 import { EnrollStudentDialog } from "./enroll-student-dialog";
 import { GrantWeekButton } from "./grant-week-button";
@@ -73,27 +72,11 @@ export default async function CourseDetailPage({
         description={course.description ?? "Course details."}
       >
         <StatusBadge status={course.status} />
-        <CourseFormDialog
-          mode="edit"
-          course={{
-            id: course.id,
-            name: course.name,
-            description: course.description,
-            level: course.level,
-            durationWeeks: course.durationWeeks,
-            price: course.price,
-            maxBookingsPerWeek: course.maxBookingsPerWeek,
-            enrollmentPaused: course.enrollmentPaused,
-            instructor: course.instructor,
-            instructorUserId: course.instructorUserId,
-            schedule: course.schedule,
-          }}
-          trigger={
-            <Button variant="outline" size="sm">
-              <Pencil className="mr-2 size-4" /> Edit
-            </Button>
-          }
-        />
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/admin/courses/${course.id}/edit`}>
+            <Pencil className="mr-2 size-4" /> Edit
+          </Link>
+        </Button>
       </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">

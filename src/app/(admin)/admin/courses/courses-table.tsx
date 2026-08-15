@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { toast } from "sonner";
 import { type Column, DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -22,7 +21,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatCurrency } from "@/lib/format";
 import { trpc } from "@/trpc/client";
-import { CourseFormDialog } from "./course-form-dialog";
 
 export type CourseRow = {
   id: string;
@@ -44,7 +42,6 @@ export type CourseRow = {
 function RowActions({ course }: { course: CourseRow }) {
   const router = useRouter();
   const setStatus = trpc.courses.setStatus.useMutation();
-  const [editOpen, setEditOpen] = useState(false);
   const nextStatus = course.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE";
 
   return (
@@ -59,8 +56,10 @@ function RowActions({ course }: { course: CourseRow }) {
           <DropdownMenuItem asChild>
             <Link href={`/admin/courses/${course.id}`}>View</Link>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-2 size-4" /> Edit
+          <DropdownMenuItem asChild>
+            <Link href={`/admin/courses/${course.id}/edit`}>
+              <Pencil className="mr-2 size-4" /> Edit
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
@@ -92,25 +91,6 @@ function RowActions({ course }: { course: CourseRow }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <CourseFormDialog
-        mode="edit"
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        course={{
-          id: course.id,
-          name: course.name,
-          description: course.description,
-          level: course.level,
-          durationWeeks: course.durationWeeks,
-          price: course.price,
-          maxBookingsPerWeek: course.maxBookingsPerWeek,
-          enrollmentPaused: course.enrollmentPaused,
-          instructor: course.instructor,
-          instructorUserId: course.instructorUserId,
-          schedule: course.schedule,
-        }}
-      />
     </>
   );
 }

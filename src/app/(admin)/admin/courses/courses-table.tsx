@@ -145,12 +145,7 @@ export function CoursesTable({
       key: "enrolled",
       header: "Enrolled",
       className: "text-center",
-      render: (c) => (
-        <span className="tabular-nums">
-          {c.enrolledCount}
-          {c.maxStudents != null ? ` / ${c.maxStudents}` : ""}
-        </span>
-      ),
+      render: (c) => <span className="tabular-nums">{c.enrolledCount}</span>,
     },
     {
       key: "status",
@@ -181,7 +176,7 @@ export function CoursesTable({
             duration_weeks: c.durationWeeks ?? "",
             price: c.price,
             enrolled: c.enrolledCount,
-            max_students: c.maxStudents ?? "",
+            bookings_per_week: c.maxBookingsPerWeek,
             instructor: c.instructor ?? "",
             status: c.status,
           })),

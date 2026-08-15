@@ -52,7 +52,6 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
   const [startTime, setStartTime] = useState("16:00");
   const [endTime, setEndTime] = useState("19:00");
   const [sessionMinutes, setSessionMinutes] = useState("30");
-  const [capacity, setCapacity] = useState("6");
   const add = trpc.courses.addSlot.useMutation();
 
   async function submit() {
@@ -63,7 +62,7 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
         startTime,
         endTime,
         sessionMinutes: Math.max(5, Number(sessionMinutes) || 30),
-        capacity: Math.max(1, Number(capacity) || 1),
+        capacity: 1,
       });
       toast.success("Slot added.");
       setOpen(false);
@@ -116,22 +115,13 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
               onChange={(e) => setEndTime(e.target.value)}
             />
           </Field>
-          <Field>
-            <FieldLabel>Min/session</FieldLabel>
+          <Field className="col-span-2">
+            <FieldLabel>Minutes per session</FieldLabel>
             <Input
               type="number"
               min={5}
               value={sessionMinutes}
               onChange={(e) => setSessionMinutes(e.target.value)}
-            />
-          </Field>
-          <Field>
-            <FieldLabel>Seats/session</FieldLabel>
-            <Input
-              type="number"
-              min={1}
-              value={capacity}
-              onChange={(e) => setCapacity(e.target.value)}
             />
           </Field>
         </div>
@@ -210,8 +200,7 @@ export function SlotManager({
                 <span className="font-medium">{WEEKDAYS[s.weekday]}</span>
                 <span className="text-muted-foreground">
                   {" · "}
-                  {s.startTime}–{s.endTime} · {s.sessionMinutes}min ·{" "}
-                  {s.capacity} seats/session
+                  {s.startTime}–{s.endTime} · {s.sessionMinutes}min sessions
                 </span>
               </span>
               <DeleteSlot id={s.id} bookingCount={s.bookingCount} />

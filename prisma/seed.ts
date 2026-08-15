@@ -269,8 +269,8 @@ async function main() {
           weekday,
           startTime: "16:00",
           endTime: "19:00", // 3h window
-          sessionMinutes: 30, // → 6 bookable sub-sessions
-          capacity: 6,
+          sessionMinutes: 30, // → 6 single-rider sub-sessions
+          capacity: 1,
         },
       });
     }

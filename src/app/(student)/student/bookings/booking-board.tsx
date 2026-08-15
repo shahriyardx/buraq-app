@@ -27,6 +27,7 @@ type Occurrence = {
   capacity: number;
   bookingId: string | null;
   bookedStart: string | null;
+  dayBooked: boolean;
   sessions: Session[];
 };
 
@@ -134,9 +135,8 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                         <span className="font-medium">{fmt(o.date)}</span>
                         <span className="text-muted-foreground">
                           {" · "}
-                          {o.windowStart}–{o.windowEnd} · {o.sessions.length}{" "}
-                          sessions × {o.sessionMinutes}min · {o.capacity} seats
-                          each
+                          {o.windowStart}–{o.windowEnd} · {o.sessionMinutes}min
+                          slots
                         </span>
                       </span>
                       {o.bookingId && (
@@ -151,7 +151,11 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                       )}
                     </div>
 
-                    {!o.bookingId && (
+                    {o.bookingId ? null : o.dayBooked ? (
+                      <p className="text-xs text-muted-foreground">
+                        You already booked a session today.
+                      </p>
+                    ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {o.sessions.map((s) => {
                           const full = s.remaining <= 0;
@@ -163,10 +167,9 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                               className="h-8 px-2 text-xs"
                               disabled={busy || full || weekFull}
                               onClick={() => onBook(o.slotId, o.date, s.start)}
-                              title={`${s.remaining} left`}
                             >
                               {s.start}–{s.end}
-                              {full ? " · full" : ` · ${s.remaining} left`}
+                              {full ? " · taken" : ""}
                             </Button>
                           );
                         })}

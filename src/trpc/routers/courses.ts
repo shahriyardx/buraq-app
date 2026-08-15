@@ -39,7 +39,8 @@ const slotInput = z.object({
   startTime: z.string().min(1, "Start time required"),
   endTime: z.string().min(1, "End time required"),
   sessionMinutes: z.number().int().min(5).max(480).default(30),
-  capacity: z.number().int().min(1, "Capacity must be at least 1"),
+  // One rider per sub-session. Kept for flexibility; forms always send 1.
+  capacity: z.number().int().min(1).default(1),
 });
 
 /**

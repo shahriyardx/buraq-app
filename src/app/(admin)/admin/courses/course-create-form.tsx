@@ -3,7 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -50,20 +51,12 @@ const schema = z.object({
   maxBookingsPerWeek: z.string().optional(),
   enrollmentPaused: z.boolean().optional(),
   schedule: z.string().optional(),
-  slots: z
-    .array(
-      z.object({
-        weekday: z.string(),
-        startTime: z.string().min(1, "Required"),
-        endTime: z.string().min(1, "Required"),
-        sessionMinutes: z.string().min(1, "Required"),
-        capacity: z.string().min(1, "Required"),
-      }),
-    )
-    .optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
+
+type Range = { start: string; end: string; min: string };
+type DayGroup = { weekday: string; ranges: Range[] };
 
 function toInt(v?: string) {
   const t = v?.trim();
@@ -86,23 +79,57 @@ export function CourseCreateForm() {
       maxBookingsPerWeek: "1",
       enrollmentPaused: false,
       schedule: "",
-      slots: [],
     },
   });
-  const slots = useFieldArray({ control, name: "slots" });
+  const [days, setDays] = useState<DayGroup[]>([]);
   const instructors = trpc.instructors.options.useQuery();
   const create = trpc.courses.create.useMutation();
 
+  const usedWeekdays = new Set(days.map((d) => d.weekday));
+  function addDay() {
+    const next = WEEKDAYS.find((w) => !usedWeekdays.has(w.value));
+    setDays((ds) => [
+      ...ds,
+      {
+        weekday: next?.value ?? "1",
+        ranges: [{ start: "16:00", end: "19:00", min: "30" }],
+      },
+    ]);
+  }
+  function updateDay(i: number, patch: Partial<DayGroup>) {
+    setDays((ds) => ds.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+  }
+  function addRange(i: number) {
+    updateDay(i, {
+      ranges: [...days[i].ranges, { start: "09:00", end: "10:00", min: "30" }],
+    });
+  }
+  function updateRange(i: number, r: number, patch: Partial<Range>) {
+    updateDay(i, {
+      ranges: days[i].ranges.map((rg, idx) =>
+        idx === r ? { ...rg, ...patch } : rg,
+      ),
+    });
+  }
+  function removeRange(i: number, r: number) {
+    updateDay(i, { ranges: days[i].ranges.filter((_, idx) => idx !== r) });
+  }
+  function removeDay(i: number) {
+    setDays((ds) => ds.filter((_, idx) => idx !== i));
+  }
+
   async function onSubmit(values: FormValues) {
-    const slotsPayload = (values.slots ?? [])
-      .filter((s) => s.startTime && s.endTime)
-      .map((s) => ({
-        weekday: Number(s.weekday),
-        startTime: s.startTime,
-        endTime: s.endTime,
-        sessionMinutes: Math.max(5, toInt(s.sessionMinutes) ?? 30),
-        capacity: Math.max(1, toInt(s.capacity) ?? 1),
-      }));
+    const slotsPayload = days.flatMap((d) =>
+      d.ranges
+        .filter((r) => r.start && r.end)
+        .map((r) => ({
+          weekday: Number(d.weekday),
+          startTime: r.start,
+          endTime: r.end,
+          sessionMinutes: Math.max(5, toInt(r.min) ?? 30),
+          capacity: 1,
+        })),
+    );
     try {
       const res = await create.mutateAsync({
         name: values.name,
@@ -301,123 +328,124 @@ export function CourseCreateForm() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="font-heading text-lg font-semibold">
-              Training slots
+              Training days & slots
             </h2>
             <p className="text-sm text-muted-foreground">
-              Weekly time windows students can book. Seats = capacity per week.
+              Add a day, then the time ranges on that day. Each range splits
+              into single-rider sessions. Students book one session per day.
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() =>
-              slots.append({
-                weekday: "1",
-                startTime: "16:00",
-                endTime: "19:00",
-                sessionMinutes: "30",
-                capacity: "6",
-              })
-            }
+            onClick={addDay}
+            disabled={days.length >= WEEKDAYS.length}
           >
-            Add slot
+            Add day
           </Button>
         </div>
 
-        {slots.fields.length === 0 ? (
+        {days.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            No slots yet. You can also add them later on the course page.
+            No days yet. Add them here, or later on the course page.
           </p>
         ) : (
-          <div className="space-y-3">
-            {slots.fields.map((f, idx) => (
-              <div
-                key={f.id}
-                className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto]"
-              >
-                <Controller
-                  control={control}
-                  name={`slots.${idx}.weekday`}
-                  render={({ field }) => (
-                    <Field>
-                      <FieldLabel>Day</FieldLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
+          <div className="space-y-4">
+            {days.map((day, i) => (
+              <div key={day.weekday} className="rounded-lg border p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <Select
+                    value={day.weekday}
+                    onValueChange={(v) => updateDay(i, { weekday: v })}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WEEKDAYS.map((d) => (
+                        <SelectItem
+                          key={d.value}
+                          value={d.value}
+                          disabled={
+                            d.value !== day.weekday && usedWeekdays.has(d.value)
+                          }
+                        >
+                          {d.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addRange(i)}
+                    >
+                      Add time range
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeDay(i)}
+                    >
+                      <Trash2 className="size-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {day.ranges.map((r, ri) => (
+                    <div
+                      key={`${day.weekday}-${ri}`}
+                      className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[auto_auto_auto_auto]"
+                    >
+                      <Field>
+                        <FieldLabel>Start</FieldLabel>
+                        <Input
+                          type="time"
+                          value={r.start}
+                          onChange={(e) =>
+                            updateRange(i, ri, { start: e.target.value })
+                          }
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>End</FieldLabel>
+                        <Input
+                          type="time"
+                          value={r.end}
+                          onChange={(e) =>
+                            updateRange(i, ri, { end: e.target.value })
+                          }
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Min/session</FieldLabel>
+                        <Input
+                          type="number"
+                          min={5}
+                          className="w-24"
+                          value={r.min}
+                          onChange={(e) =>
+                            updateRange(i, ri, { min: e.target.value })
+                          }
+                        />
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={day.ranges.length <= 1}
+                        onClick={() => removeRange(i, ri)}
                       >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {WEEKDAYS.map((d) => (
-                            <SelectItem key={d.value} value={d.value}>
-                              {d.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  )}
-                />
-                <Controller
-                  control={control}
-                  name={`slots.${idx}.startTime`}
-                  render={({ field }) => (
-                    <Field>
-                      <FieldLabel>Start</FieldLabel>
-                      <Input type="time" {...field} />
-                    </Field>
-                  )}
-                />
-                <Controller
-                  control={control}
-                  name={`slots.${idx}.endTime`}
-                  render={({ field }) => (
-                    <Field>
-                      <FieldLabel>End</FieldLabel>
-                      <Input type="time" {...field} />
-                    </Field>
-                  )}
-                />
-                <Controller
-                  control={control}
-                  name={`slots.${idx}.sessionMinutes`}
-                  render={({ field }) => (
-                    <Field>
-                      <FieldLabel>Min</FieldLabel>
-                      <Input
-                        type="number"
-                        min={5}
-                        className="w-20"
-                        {...field}
-                      />
-                    </Field>
-                  )}
-                />
-                <Controller
-                  control={control}
-                  name={`slots.${idx}.capacity`}
-                  render={({ field }) => (
-                    <Field>
-                      <FieldLabel>Seats</FieldLabel>
-                      <Input
-                        type="number"
-                        min={1}
-                        className="w-20"
-                        {...field}
-                      />
-                    </Field>
-                  )}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => slots.remove(idx)}
-                >
-                  <Trash2 className="size-4 text-destructive" />
-                </Button>
+                        <Trash2 className="size-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

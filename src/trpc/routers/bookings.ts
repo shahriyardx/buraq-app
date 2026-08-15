@@ -101,11 +101,12 @@ export const bookingsRouter = createTRPCRouter({
           g._count._all,
         );
       const mine = new Map<string, { id: string; startTime: string }>();
-      for (const b of myBookings)
-        mine.set(`${b.slotId}|${dateKey(b.date)}`, {
-          id: b.id,
-          startTime: b.startTime,
-        });
+      const myBookedDates = new Set<string>();
+      for (const b of myBookings) {
+        const dk = dateKey(b.date);
+        mine.set(`${b.slotId}|${dk}`, { id: b.id, startTime: b.startTime });
+        myBookedDates.add(dk);
+      }
 
       const occurrences = [];
       if (progress.bookingOpen) {
@@ -143,6 +144,9 @@ export const bookingsRouter = createTRPCRouter({
               capacity: s.capacity,
               bookingId: myBooking?.id ?? null,
               bookedStart: myBooking?.startTime ?? null,
+              // One booking per day: if they booked ANY session today (in a
+              // different range), the rest of the day is closed.
+              dayBooked: !myBooking && myBookedDates.has(dk),
               sessions,
             });
           }
@@ -303,6 +307,17 @@ export const bookingsRouter = createTRPCRouter({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "That date is outside your booking window.",
+        });
+      }
+
+      // One booking per day (across all of this course's ranges that day).
+      const dayCount = await prisma.slotBooking.count({
+        where: { studentId, date, slot: { courseId: slot.course.id } },
+      });
+      if (dayCount >= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You can book only one session per day.",
         });
       }
 

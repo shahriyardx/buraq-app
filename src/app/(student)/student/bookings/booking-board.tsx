@@ -134,8 +134,9 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                         <span className="font-medium">{fmt(o.date)}</span>
                         <span className="text-muted-foreground">
                           {" · "}
-                          {o.windowStart}–{o.windowEnd} · {o.sessionMinutes}min
-                          · {o.capacity} seats
+                          {o.windowStart}–{o.windowEnd} · {o.sessions.length}{" "}
+                          sessions × {o.sessionMinutes}min · {o.capacity} seats
+                          each
                         </span>
                       </span>
                       {o.bookingId && (
@@ -165,7 +166,7 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                               title={`${s.remaining} left`}
                             >
                               {s.start}–{s.end}
-                              {full ? " · full" : ` · ${s.remaining}`}
+                              {full ? " · full" : ` · ${s.remaining} left`}
                             </Button>
                           );
                         })}

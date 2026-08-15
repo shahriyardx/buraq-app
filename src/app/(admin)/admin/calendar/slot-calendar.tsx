@@ -81,9 +81,14 @@ export function SlotCalendar({
     await utils.courses.calendar.invalidate({ courseId, year, month });
   }
 
-  async function doAssign(slotId: string, date: string, studentId: string) {
+  async function doAssign(
+    slotId: string,
+    date: string,
+    startTime: string,
+    studentId: string,
+  ) {
     try {
-      await assign.mutateAsync({ slotId, date, studentId });
+      await assign.mutateAsync({ slotId, date, startTime, studentId });
       toast.success("Slot assigned.");
       await refresh();
     } catch (err) {
@@ -160,9 +165,10 @@ export function SlotCalendar({
           {dayNums.map((d) => {
             const dk = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
             const slots = byDate.get(dk);
-            const booked =
-              slots?.reduce((n, s) => n + s.bookings.length, 0) ?? 0;
-            const cap = slots?.reduce((n, s) => n + s.capacity, 0) ?? 0;
+            const booked = slots?.reduce((n, s) => n + s.bookedCount, 0) ?? 0;
+            const cap =
+              slots?.reduce((n, s) => n + s.sessions.length * s.capacity, 0) ??
+              0;
             const has = Boolean(slots?.length);
             const isSel = selected === dk;
             return (
@@ -207,62 +213,79 @@ export function SlotCalendar({
         )}
 
         <div className="space-y-4">
-          {selectedSlots.map((s) => {
-            const remaining = s.capacity - s.bookings.length;
-            const bookedIds = new Set(s.bookings.map((b) => b.studentId));
-            const assignable = students.filter((st) => !bookedIds.has(st.id));
-            return (
-              <div key={s.slotId} className="rounded-lg border p-3">
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="font-medium">
-                    {s.startTime}–{s.endTime}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {s.bookings.length}/{s.capacity} · {remaining} left
-                  </span>
-                </div>
-                <ul className="space-y-1">
-                  {s.bookings.map((b) => (
-                    <li
-                      key={b.bookingId}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <span>{b.studentName}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={remove.isPending}
-                        onClick={() => doRemove(b.bookingId)}
-                      >
-                        <Trash2 className="size-3.5 text-destructive" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-                {remaining > 0 && assignable.length > 0 && (
-                  <Select
-                    value={ASSIGN}
-                    onValueChange={(v) => {
-                      if (v !== ASSIGN && selected)
-                        doAssign(s.slotId, selected, v);
-                    }}
-                  >
-                    <SelectTrigger className="mt-2 h-9">
-                      <SelectValue placeholder="Assign student…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ASSIGN}>Assign student…</SelectItem>
-                      {assignable.map((st) => (
-                        <SelectItem key={st.id} value={st.id}>
-                          {st.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+          {selectedSlots.map((slot) => (
+            <div key={slot.slotId} className="rounded-lg border p-3">
+              <p className="mb-2 text-sm font-medium">
+                {slot.windowStart}–{slot.windowEnd}
+                <span className="ml-1 font-normal text-muted-foreground">
+                  · {slot.sessionMinutes}min · {slot.capacity} seats/session
+                </span>
+              </p>
+              <div className="space-y-3">
+                {slot.sessions.map((ss) => {
+                  const remaining = ss.capacity - ss.bookings.length;
+                  const bookedIds = new Set(
+                    ss.bookings.map((b) => b.studentId),
+                  );
+                  const assignable = students.filter(
+                    (st) => !bookedIds.has(st.id),
+                  );
+                  return (
+                    <div key={ss.start} className="rounded-md bg-muted/40 p-2">
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="font-medium">
+                          {ss.start}–{ss.end}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {ss.bookings.length}/{ss.capacity} · {remaining} left
+                        </span>
+                      </div>
+                      <ul className="space-y-0.5">
+                        {ss.bookings.map((b) => (
+                          <li
+                            key={b.bookingId}
+                            className="flex items-center justify-between gap-2 text-sm"
+                          >
+                            <span>{b.studentName}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6"
+                              disabled={remove.isPending}
+                              onClick={() => doRemove(b.bookingId)}
+                            >
+                              <Trash2 className="size-3.5 text-destructive" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                      {remaining > 0 && assignable.length > 0 && (
+                        <Select
+                          value={ASSIGN}
+                          onValueChange={(v) => {
+                            if (v !== ASSIGN && selected)
+                              doAssign(slot.slotId, selected, ss.start, v);
+                          }}
+                        >
+                          <SelectTrigger className="mt-1 h-8 text-xs">
+                            <SelectValue placeholder="Assign…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={ASSIGN}>Assign…</SelectItem>
+                            {assignable.map((st) => (
+                              <SelectItem key={st.id} value={st.id}>
+                                {st.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </Card>
     </div>

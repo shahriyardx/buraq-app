@@ -29,6 +29,31 @@ export function addWeeksKey(weekKey: string, n: number) {
   return dateKey(d);
 }
 
+/** "HH:mm" → minutes since midnight. */
+export function hmToMin(hm: string) {
+  const [h, m] = hm.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** minutes since midnight → "HH:mm". */
+export function minToHm(min: number) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Splits a [start,end] window into fixed-length sub-sessions. */
+export function subSessions(start: string, end: string, minutes: number) {
+  const s = hmToMin(start);
+  const e = hmToMin(end);
+  const len = minutes > 0 ? minutes : 30;
+  const out: { start: string; end: string }[] = [];
+  for (let t = s; t + len <= e; t += len) {
+    out.push({ start: minToHm(t), end: minToHm(t + len) });
+  }
+  return out;
+}
+
 // ─── Progress model ─────────────────────────────────────────────────────────
 
 export type EnrollmentLite = {

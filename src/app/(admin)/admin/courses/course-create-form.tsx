@@ -56,6 +56,7 @@ const schema = z.object({
         weekday: z.string(),
         startTime: z.string().min(1, "Required"),
         endTime: z.string().min(1, "Required"),
+        sessionMinutes: z.string().min(1, "Required"),
         capacity: z.string().min(1, "Required"),
       }),
     )
@@ -99,6 +100,7 @@ export function CourseCreateForm() {
         weekday: Number(s.weekday),
         startTime: s.startTime,
         endTime: s.endTime,
+        sessionMinutes: Math.max(5, toInt(s.sessionMinutes) ?? 30),
         capacity: Math.max(1, toInt(s.capacity) ?? 1),
       }));
     try {
@@ -313,7 +315,8 @@ export function CourseCreateForm() {
               slots.append({
                 weekday: "1",
                 startTime: "16:00",
-                endTime: "17:00",
+                endTime: "19:00",
+                sessionMinutes: "30",
                 capacity: "6",
               })
             }
@@ -331,7 +334,7 @@ export function CourseCreateForm() {
             {slots.fields.map((f, idx) => (
               <div
                 key={f.id}
-                className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]"
+                className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto]"
               >
                 <Controller
                   control={control}
@@ -374,6 +377,21 @@ export function CourseCreateForm() {
                     <Field>
                       <FieldLabel>End</FieldLabel>
                       <Input type="time" {...field} />
+                    </Field>
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name={`slots.${idx}.sessionMinutes`}
+                  render={({ field }) => (
+                    <Field>
+                      <FieldLabel>Min</FieldLabel>
+                      <Input
+                        type="number"
+                        min={5}
+                        className="w-20"
+                        {...field}
+                      />
                     </Field>
                   )}
                 />

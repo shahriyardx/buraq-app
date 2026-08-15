@@ -3,7 +3,10 @@ import { z } from "zod";
 import {
   computeProgress,
   dateKey,
+  hmToMin,
   loadBookedWeekKeys,
+  minToHm,
+  subSessions,
   todayUtc,
   toUtcDate,
   weekStartKey,
@@ -11,7 +14,12 @@ import {
 import { prisma } from "@/lib/prisma";
 import { createTRPCRouter, studentProcedure } from "../init";
 
-const MAX_HORIZON_DAYS = 120; // safety cap on occurrence generation
+/** Sunday (end) of the week containing `d`, as a yyyy-mm-dd key. */
+function weekEndKey(d: Date) {
+  const start = toUtcDate(weekStartKey(d));
+  start.setUTCDate(start.getUTCDate() + 6);
+  return dateKey(start);
+}
 
 export const bookingsRouter = createTRPCRouter({
   /**
@@ -61,20 +69,19 @@ export const bookingsRouter = createTRPCRouter({
         });
       }
 
-      // How far to generate occurrences.
-      let horizonDays = MAX_HORIZON_DAYS;
-      if (progress.allowedUntil) {
-        const diff = Math.ceil(
-          (toUtcDate(progress.allowedUntil).getTime() - start.getTime()) /
-            86400000,
-        );
-        horizonDays = Math.min(MAX_HORIZON_DAYS, Math.max(0, diff + 1));
-      }
+      // Bookings are limited to the CURRENT week only (no future weeks), and
+      // never beyond the enrollment's allowed window.
+      const endKey =
+        progress.allowedUntil && progress.allowedUntil < weekEndKey(start)
+          ? progress.allowedUntil
+          : weekEndKey(start);
+      const endDate = toUtcDate(endKey);
 
       const slotIds = e.course.slots.map((s) => s.id);
       const [allBookings, myBookings] = await Promise.all([
+        // Seat usage per (slot, date, sub-session start).
         prisma.slotBooking.groupBy({
-          by: ["slotId", "date"],
+          by: ["slotId", "date", "startTime"],
           where: { slotId: { in: slotIds }, date: { gte: start } },
           _count: { _all: true },
         }),
@@ -84,36 +91,59 @@ export const bookingsRouter = createTRPCRouter({
             slot: { courseId: e.courseId },
             date: { gte: start },
           },
-          select: { id: true, slotId: true, date: true },
+          select: { id: true, slotId: true, date: true, startTime: true },
         }),
       ]);
       const usedBy = new Map<string, number>();
       for (const g of allBookings)
-        usedBy.set(`${g.slotId}|${dateKey(g.date)}`, g._count._all);
-      const mine = new Map<string, string>();
+        usedBy.set(
+          `${g.slotId}|${dateKey(g.date)}|${g.startTime}`,
+          g._count._all,
+        );
+      const mine = new Map<string, { id: string; startTime: string }>();
       for (const b of myBookings)
-        mine.set(`${b.slotId}|${dateKey(b.date)}`, b.id);
+        mine.set(`${b.slotId}|${dateKey(b.date)}`, {
+          id: b.id,
+          startTime: b.startTime,
+        });
 
       const occurrences = [];
       if (progress.bookingOpen) {
-        for (let i = 0; i < horizonDays; i++) {
+        for (
           const d = new Date(start);
-          d.setUTCDate(start.getUTCDate() + i);
+          d <= endDate;
+          d.setUTCDate(d.getUTCDate() + 1)
+        ) {
           const wd = d.getUTCDay();
           const dk = dateKey(d);
           for (const s of e.course.slots) {
             if (s.weekday !== wd) continue;
-            const key = `${s.id}|${dk}`;
+            const myBooking = mine.get(`${s.id}|${dk}`) ?? null;
+            const sessions = subSessions(
+              s.startTime,
+              s.endTime,
+              s.sessionMinutes,
+            ).map((ss) => {
+              const used = usedBy.get(`${s.id}|${dk}|${ss.start}`) ?? 0;
+              return {
+                start: ss.start,
+                end: ss.end,
+                remaining: Math.max(0, s.capacity - used),
+                mine: myBooking?.startTime === ss.start,
+              };
+            });
             occurrences.push({
               slotId: s.id,
               date: dk,
               weekday: wd,
               weekStart: weekStartKey(d),
-              startTime: s.startTime,
-              endTime: s.endTime,
+              windowStart: s.startTime,
+              windowEnd: s.endTime,
+              sessionMinutes: s.sessionMinutes,
               capacity: s.capacity,
-              remaining: Math.max(0, s.capacity - (usedBy.get(key) ?? 0)),
-              bookingId: mine.get(key) ?? null,
+              bookingId: myBooking?.id ?? null,
+              bookedStart: myBooking?.startTime ?? null,
+              sessions,
             });
           }
         }
@@ -161,23 +191,39 @@ export const bookingsRouter = createTRPCRouter({
       id: b.id,
       date: b.date,
       courseName: b.slot.course.name,
-      startTime: b.slot.startTime,
-      endTime: b.slot.endTime,
+      startTime: b.startTime || b.slot.startTime,
+      endTime: b.startTime
+        ? minToHm(hmToMin(b.startTime) + b.slot.sessionMinutes)
+        : b.slot.endTime,
     }));
   }),
 
   book: studentProcedure
-    .input(z.object({ slotId: z.string(), date: z.string() }))
+    .input(
+      z.object({
+        slotId: z.string(),
+        date: z.string(),
+        startTime: z.string().min(1, "Pick a time"),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const studentId = ctx.session.user.id;
       const date = toUtcDate(input.date);
+      const today = todayUtc();
       if (Number.isNaN(date.getTime())) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid date." });
       }
-      if (date < todayUtc()) {
+      if (date < today) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Cannot book a past date.",
+        });
+      }
+      // Current week only — no future weeks.
+      if (weekStartKey(date) !== weekStartKey(today)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You can only book this week's slots.",
         });
       }
 
@@ -200,6 +246,18 @@ export const bookingsRouter = createTRPCRouter({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "That date does not match this slot's day.",
+        });
+      }
+      // The chosen time must be a valid sub-session of the slot window.
+      const validSessions = subSessions(
+        slot.startTime,
+        slot.endTime,
+        slot.sessionMinutes,
+      );
+      if (!validSessions.some((s) => s.start === input.startTime)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid session time.",
         });
       }
 
@@ -267,21 +325,26 @@ export const bookingsRouter = createTRPCRouter({
         });
       }
 
-      // Slot capacity on this date.
+      // Sub-session capacity (seats at the chosen time on this date).
       const used = await prisma.slotBooking.count({
-        where: { slotId: slot.id, date },
+        where: { slotId: slot.id, date, startTime: input.startTime },
       });
       if (used >= slot.capacity) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "This slot is full for that date.",
+          message: "That time is full. Pick another.",
         });
       }
 
       let bookingId: string;
       try {
         const booking = await prisma.slotBooking.create({
-          data: { slotId: slot.id, studentId, date },
+          data: {
+            slotId: slot.id,
+            studentId,
+            date,
+            startTime: input.startTime,
+          },
         });
         bookingId = booking.id;
       } catch {

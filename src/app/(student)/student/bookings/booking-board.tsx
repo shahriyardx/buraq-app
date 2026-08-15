@@ -9,16 +9,25 @@ import { trpc } from "@/trpc/client";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+type Session = {
+  start: string;
+  end: string;
+  remaining: number;
+  mine: boolean;
+};
+
 type Occurrence = {
   slotId: string;
   date: string;
   weekday: number;
   weekStart: string;
-  startTime: string;
-  endTime: string;
+  windowStart: string;
+  windowEnd: string;
+  sessionMinutes: number;
   capacity: number;
-  remaining: number;
   bookingId: string | null;
+  bookedStart: string | null;
+  sessions: Session[];
 };
 
 type CourseBlock = {
@@ -46,9 +55,9 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
   const cancel = trpc.bookings.cancel.useMutation();
   const busy = book.isPending || cancel.isPending;
 
-  async function onBook(slotId: string, date: string) {
+  async function onBook(slotId: string, date: string, startTime: string) {
     try {
-      const res = await book.mutateAsync({ slotId, date });
+      const res = await book.mutateAsync({ slotId, date, startTime });
       toast.success(
         res.status === "COMPLETED"
           ? "Booked — course completed! 🎉"
@@ -118,43 +127,54 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
               {c.occurrences.map((o) => {
                 const weekFull =
                   (c.weekUsage[o.weekStart] ?? 0) >= c.maxBookingsPerWeek;
-                const disabled =
-                  busy || (!o.bookingId && (o.remaining <= 0 || weekFull));
                 return (
-                  <li
-                    key={`${o.slotId}-${o.date}`}
-                    className="flex items-center justify-between gap-4 py-2.5 text-sm"
-                  >
-                    <div>
-                      <span className="font-medium">{fmt(o.date)}</span>
-                      <span className="text-muted-foreground">
-                        {" · "}
-                        {o.startTime}–{o.endTime}
-                        {" · "}
-                        {o.remaining} left
+                  <li key={`${o.slotId}-${o.date}`} className="py-3">
+                    <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+                      <span>
+                        <span className="font-medium">{fmt(o.date)}</span>
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          {o.windowStart}–{o.windowEnd} · {o.sessionMinutes}min
+                          · {o.capacity} seats
+                        </span>
                       </span>
+                      {o.bookingId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => onCancel(o.bookingId as string)}
+                        >
+                          Cancel {o.bookedStart}
+                        </Button>
+                      )}
                     </div>
-                    {o.bookingId ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => onCancel(o.bookingId as string)}
-                      >
-                        Cancel
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={disabled}
-                        onClick={() => onBook(o.slotId, o.date)}
-                      >
-                        {o.remaining <= 0
-                          ? "Full"
-                          : weekFull
-                            ? "Week full"
-                            : "Book"}
-                      </Button>
+
+                    {!o.bookingId && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {o.sessions.map((s) => {
+                          const full = s.remaining <= 0;
+                          return (
+                            <Button
+                              key={s.start}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-xs"
+                              disabled={busy || full || weekFull}
+                              onClick={() => onBook(o.slotId, o.date, s.start)}
+                              title={`${s.remaining} left`}
+                            >
+                              {s.start}–{s.end}
+                              {full ? " · full" : ` · ${s.remaining}`}
+                            </Button>
+                          );
+                        })}
+                        {weekFull && (
+                          <span className="self-center text-xs text-muted-foreground">
+                            Weekly limit reached
+                          </span>
+                        )}
+                      </div>
                     )}
                   </li>
                 );

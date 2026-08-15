@@ -263,11 +263,15 @@ async function main() {
     if (existing > 0) continue;
     const days = slotsByCourse[course.name] ?? [1];
     for (const weekday of days) {
-      await prisma.courseSlot.createMany({
-        data: [
-          { courseId: course.id, weekday, startTime: "16:00", endTime: "17:00", capacity: 6 },
-          { courseId: course.id, weekday, startTime: "17:00", endTime: "18:00", capacity: 6 },
-        ],
+      await prisma.courseSlot.create({
+        data: {
+          courseId: course.id,
+          weekday,
+          startTime: "16:00",
+          endTime: "19:00", // 3h window
+          sessionMinutes: 30, // → 6 bookable sub-sessions
+          capacity: 6,
+        },
       });
     }
   }

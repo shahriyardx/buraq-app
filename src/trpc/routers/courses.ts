@@ -1,7 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
-import { computeProgress, loadBookedWeekKeys } from "@/lib/enrollment";
+import {
+  computeProgress,
+  loadBookedWeekKeys,
+  subSessions,
+} from "@/lib/enrollment";
 import { enrollStudent } from "@/lib/enrollments";
 import { generateInvoiceNumber } from "@/lib/ids";
 import { notifyStudent } from "@/lib/notify";
@@ -34,6 +38,7 @@ const slotInput = z.object({
   weekday: z.number().int().min(0).max(6),
   startTime: z.string().min(1, "Start time required"),
   endTime: z.string().min(1, "End time required"),
+  sessionMinutes: z.number().int().min(5).max(480).default(30),
   capacity: z.number().int().min(1, "Capacity must be at least 1"),
 });
 
@@ -491,6 +496,7 @@ export const coursesRouter = createTRPCRouter({
         weekday: s.weekday,
         startTime: s.startTime,
         endTime: s.endTime,
+        sessionMinutes: s.sessionMinutes,
         capacity: s.capacity,
         bookingCount: s._count.bookings,
       }));
@@ -511,6 +517,7 @@ export const coursesRouter = createTRPCRouter({
           weekday: input.weekday,
           startTime: input.startTime,
           endTime: input.endTime,
+          sessionMinutes: input.sessionMinutes,
           capacity: input.capacity,
         },
       });
@@ -608,22 +615,25 @@ export const coursesRouter = createTRPCRouter({
             include: { student: { select: { id: true, name: true } } },
           })
         : [];
-      const bySlotDate = new Map<
-        string,
-        { bookingId: string; studentId: string; studentName: string }[]
-      >();
+      type Booking = {
+        bookingId: string;
+        studentId: string;
+        studentName: string;
+      };
+      // key = slotId|date|sessionStart
+      const bySession = new Map<string, Booking[]>();
       for (const b of bookings) {
-        const key = `${b.slotId}|${b.date.toISOString().slice(0, 10)}`;
-        const arr = bySlotDate.get(key) ?? [];
+        const key = `${b.slotId}|${b.date.toISOString().slice(0, 10)}|${b.startTime}`;
+        const arr = bySession.get(key) ?? [];
         arr.push({
           bookingId: b.id,
           studentId: b.student.id,
           studentName: b.student.name,
         });
-        bySlotDate.set(key, arr);
+        bySession.set(key, arr);
       }
 
-      // Build day → slots for every date in the month that has a slot.
+      // Build day → slots → sessions for every date with a slot.
       const daysInMonth = new Date(
         Date.UTC(input.year, input.month, 0),
       ).getUTCDate();
@@ -631,13 +641,16 @@ export const coursesRouter = createTRPCRouter({
         date: string;
         slots: {
           slotId: string;
-          startTime: string;
-          endTime: string;
+          windowStart: string;
+          windowEnd: string;
+          sessionMinutes: number;
           capacity: number;
-          bookings: {
-            bookingId: string;
-            studentId: string;
-            studentName: string;
+          bookedCount: number;
+          sessions: {
+            start: string;
+            end: string;
+            capacity: number;
+            bookings: Booking[];
           }[];
         }[];
       }[] = [];
@@ -647,13 +660,27 @@ export const coursesRouter = createTRPCRouter({
         const wd = date.getUTCDay();
         const slots = course.slots
           .filter((s) => s.weekday === wd)
-          .map((s) => ({
-            slotId: s.id,
-            startTime: s.startTime,
-            endTime: s.endTime,
-            capacity: s.capacity,
-            bookings: bySlotDate.get(`${s.id}|${dk}`) ?? [],
-          }));
+          .map((s) => {
+            const sessions = subSessions(
+              s.startTime,
+              s.endTime,
+              s.sessionMinutes,
+            ).map((ss) => ({
+              start: ss.start,
+              end: ss.end,
+              capacity: s.capacity,
+              bookings: bySession.get(`${s.id}|${dk}|${ss.start}`) ?? [],
+            }));
+            return {
+              slotId: s.id,
+              windowStart: s.startTime,
+              windowEnd: s.endTime,
+              sessionMinutes: s.sessionMinutes,
+              capacity: s.capacity,
+              bookedCount: sessions.reduce((n, x) => n + x.bookings.length, 0),
+              sessions,
+            };
+          });
         if (slots.length) days.push({ date: dk, slots });
       }
 
@@ -673,6 +700,7 @@ export const coursesRouter = createTRPCRouter({
       z.object({
         slotId: z.string(),
         date: z.string(),
+        startTime: z.string().min(1),
         studentId: z.string(),
       }),
     )
@@ -683,13 +711,32 @@ export const coursesRouter = createTRPCRouter({
       }
       const slot = await prisma.courseSlot.findUnique({
         where: { id: input.slotId },
-        select: { id: true, weekday: true, capacity: true, courseId: true },
+        select: {
+          id: true,
+          weekday: true,
+          startTime: true,
+          endTime: true,
+          sessionMinutes: true,
+          capacity: true,
+          courseId: true,
+        },
       });
       if (!slot) throw new TRPCError({ code: "NOT_FOUND" });
       if (slot.weekday !== date.getUTCDay()) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "That date does not match the slot's day.",
+        });
+      }
+      const sessions = subSessions(
+        slot.startTime,
+        slot.endTime,
+        slot.sessionMinutes,
+      );
+      if (!sessions.some((s) => s.start === input.startTime)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid session time.",
         });
       }
       const enrollment = await prisma.enrollment.findUnique({
@@ -707,17 +754,22 @@ export const coursesRouter = createTRPCRouter({
         });
       }
       const used = await prisma.slotBooking.count({
-        where: { slotId: slot.id, date },
+        where: { slotId: slot.id, date, startTime: input.startTime },
       });
       if (used >= slot.capacity) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "This slot is full for that date.",
+          message: "That session time is full.",
         });
       }
       try {
         await prisma.slotBooking.create({
-          data: { slotId: slot.id, studentId: input.studentId, date },
+          data: {
+            slotId: slot.id,
+            studentId: input.studentId,
+            date,
+            startTime: input.startTime,
+          },
         });
       } catch {
         throw new TRPCError({

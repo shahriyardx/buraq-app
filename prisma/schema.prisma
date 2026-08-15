@@ -212,9 +212,10 @@ model CourseSlot {
   courseId  String
   course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   weekday   Int      // 0=Sunday … 6=Saturday
-  startTime String   // "HH:mm"
-  endTime   String   // "HH:mm"
-  capacity  Int      @default(1) // students allowed per occurrence
+  startTime String   // window start "HH:mm"
+  endTime   String   // window end "HH:mm"
+  sessionMinutes Int  @default(30) // length of each bookable sub-session
+  capacity  Int      @default(1) // seats per sub-session
   createdAt DateTime @default(now())
 
   bookings  SlotBooking[]
@@ -231,6 +232,7 @@ model SlotBooking {
   studentId String
   student   User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   date      DateTime   @db.Date
+  startTime String     @default("") // chosen sub-session start "HH:mm"
   createdAt DateTime   @default(now())
 
   @@unique([slotId, studentId, date])

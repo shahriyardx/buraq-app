@@ -40,6 +40,7 @@ export type SlotRow = {
   weekday: number;
   startTime: string;
   endTime: string;
+  sessionMinutes: number;
   capacity: number;
   bookingCount: number;
 };
@@ -49,7 +50,8 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
   const [open, setOpen] = useState(false);
   const [weekday, setWeekday] = useState("1");
   const [startTime, setStartTime] = useState("16:00");
-  const [endTime, setEndTime] = useState("17:00");
+  const [endTime, setEndTime] = useState("19:00");
+  const [sessionMinutes, setSessionMinutes] = useState("30");
   const [capacity, setCapacity] = useState("6");
   const add = trpc.courses.addSlot.useMutation();
 
@@ -60,6 +62,7 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
         weekday: Number(weekday),
         startTime,
         endTime,
+        sessionMinutes: Math.max(5, Number(sessionMinutes) || 30),
         capacity: Math.max(1, Number(capacity) || 1),
       });
       toast.success("Slot added.");
@@ -114,7 +117,16 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
             />
           </Field>
           <Field>
-            <FieldLabel>Seats</FieldLabel>
+            <FieldLabel>Min/session</FieldLabel>
+            <Input
+              type="number"
+              min={5}
+              value={sessionMinutes}
+              onChange={(e) => setSessionMinutes(e.target.value)}
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Seats/session</FieldLabel>
             <Input
               type="number"
               min={1}
@@ -198,7 +210,8 @@ export function SlotManager({
                 <span className="font-medium">{WEEKDAYS[s.weekday]}</span>
                 <span className="text-muted-foreground">
                   {" · "}
-                  {s.startTime}–{s.endTime} · {s.capacity} seats
+                  {s.startTime}–{s.endTime} · {s.sessionMinutes}min ·{" "}
+                  {s.capacity} seats/session
                 </span>
               </span>
               <DeleteSlot id={s.id} bookingCount={s.bookingCount} />

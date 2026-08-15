@@ -182,15 +182,12 @@ export function CoursesTable({
           })),
       }}
       toolbar={
-        <CourseFormDialog
-          mode="create"
-          trigger={
-            <Button size="sm">
-              <Plus className="mr-2 size-4" />
-              Add course
-            </Button>
-          }
-        />
+        <Button size="sm" asChild>
+          <Link href="/admin/courses/new">
+            <Plus className="mr-2 size-4" />
+            Add course
+          </Link>
+        </Button>
       }
     />
   );

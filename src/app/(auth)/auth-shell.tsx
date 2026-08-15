@@ -1,4 +1,5 @@
 import { Fraunces } from "next/font/google";
+import Image from "next/image";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -79,7 +80,14 @@ export function AuthShell({
         <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#c99a3f] to-transparent" />
 
         <div className="relative flex flex-col items-center text-center text-[#20302a]">
-          <Horseshoe className="buraq-float size-14 text-[#a5772f]" />
+          <Image
+            src="/logo.png"
+            alt="Buraq Horse Riding School"
+            width={96}
+            height={96}
+            className="buraq-float size-24 rounded-xl object-cover shadow-md"
+            priority
+          />
           <p className="mt-4 text-[11px] uppercase tracking-[0.4em] text-[#a5772f]">
             {eyebrow}
           </p>
@@ -106,46 +114,5 @@ export function AuthShell({
         © {new Date().getFullYear()} Buraq Horse Riding School
       </p>
     </div>
-  );
-}
-
-function Horseshoe({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 100 100"
-      className={className}
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M30 16 A34 34 0 1 0 70 16"
-        stroke="currentColor"
-        strokeWidth="11"
-        strokeLinecap="round"
-      />
-      <path
-        d="M30 16 A34 34 0 1 0 70 16"
-        stroke="#00000022"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      {[
-        [22, 40],
-        [20, 58],
-        [30, 74],
-        [70, 74],
-        [80, 58],
-        [78, 40],
-      ].map(([cx, cy]) => (
-        <circle
-          key={`${cx}-${cy}`}
-          cx={cx}
-          cy={cy}
-          r="2.4"
-          fill="currentColor"
-          opacity="0.5"
-        />
-      ))}
-    </svg>
   );
 }

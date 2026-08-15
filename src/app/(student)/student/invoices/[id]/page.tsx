@@ -42,10 +42,19 @@ export default async function StudentInvoiceDetailPage({
               <div>
                 <p className="font-medium">Payment under review</p>
                 <p className="text-sm">
-                  We received transaction{" "}
-                  <span className="font-mono">{invoice.transactionId}</span>. An
-                  administrator will confirm it shortly — your training weeks
-                  start once it is approved.
+                  {invoice.paymentMethod === "CASH" ? (
+                    <>
+                      Cash payment selected. The office will call you to verify,
+                      then confirm your enrollment.
+                    </>
+                  ) : (
+                    <>
+                      We received transaction{" "}
+                      <span className="font-mono">{invoice.transactionId}</span>
+                      .
+                    </>
+                  )}{" "}
+                  Your training weeks start once it is approved.
                 </p>
               </div>
             </Card>

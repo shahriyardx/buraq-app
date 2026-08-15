@@ -256,11 +256,8 @@ export const invoicesRouter = createTRPCRouter({
       }
       const invoice = await prisma.invoice.update({
         where: { id: input.id },
-        data: {
-          status: "PAID",
-          paidDate: new Date(),
-          paymentMethod: "ONLINE",
-        },
+        // Keep whatever method the student chose (ONLINE / CASH).
+        data: { status: "PAID", paidDate: new Date() },
       });
       await activatePaidEnrollment(invoice.studentId, invoice.courseId);
 
@@ -465,6 +462,7 @@ export const invoicesRouter = createTRPCRouter({
         dueDate: invoice.dueDate,
         status: invoice.status,
         transactionId: invoice.transactionId,
+        paymentMethod: invoice.paymentMethod,
         pdfUrl: invoice.pdfUrl,
         currency: settings?.currency ?? DEFAULT_CURRENCY,
         schoolName: settings?.name ?? "Buraq Horse Riding School",
@@ -473,13 +471,27 @@ export const invoicesRouter = createTRPCRouter({
       };
     }),
 
-  /** Student submits a transaction id → invoice moves to PROCESSING. */
+  /**
+   * Student submits payment → invoice moves to PROCESSING for admin review.
+   * ONLINE requires a transaction id; CASH just flags it (admin calls to
+   * verify, then marks paid).
+   */
   submitPayment: studentProcedure
     .input(
-      z.object({
-        id: z.string(),
-        transactionId: z.string().min(3, "Enter a valid transaction id"),
-      }),
+      z
+        .object({
+          id: z.string(),
+          method: z.enum(["ONLINE", "CASH"]).default("ONLINE"),
+          transactionId: z.string().optional(),
+        })
+        .refine(
+          (v) =>
+            v.method === "CASH" || (v.transactionId?.trim().length ?? 0) >= 3,
+          {
+            message: "Enter a valid transaction id",
+            path: ["transactionId"],
+          },
+        ),
     )
     .mutation(async ({ ctx, input }) => {
       const invoice = await prisma.invoice.findFirst({
@@ -499,8 +511,9 @@ export const invoicesRouter = createTRPCRouter({
       await prisma.invoice.update({
         where: { id: invoice.id },
         data: {
-          transactionId: input.transactionId,
-          paymentMethod: "ONLINE",
+          transactionId:
+            input.method === "CASH" ? null : (input.transactionId ?? null),
+          paymentMethod: input.method,
           status: "PROCESSING",
         },
       });

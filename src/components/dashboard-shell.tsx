@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -91,45 +92,17 @@ function NavLinks({
   );
 }
 
-function Horseshoe({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 100 100"
-      className={className}
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M30 16 A34 34 0 1 0 70 16"
-        stroke="currentColor"
-        strokeWidth="11"
-        strokeLinecap="round"
-      />
-      {[
-        [22, 40],
-        [20, 58],
-        [30, 74],
-        [70, 74],
-        [80, 58],
-        [78, 40],
-      ].map(([cx, cy]) => (
-        <circle
-          key={`${cx}-${cy}`}
-          cx={cx}
-          cy={cy}
-          r="2.6"
-          fill="currentColor"
-          opacity="0.5"
-        />
-      ))}
-    </svg>
-  );
-}
-
 function Brand() {
   return (
     <div className="flex items-center gap-3 px-6 py-5">
-      <Horseshoe className="size-9 text-sidebar-primary" />
+      <Image
+        src="/logo.png"
+        alt="Buraq Horse Riding School"
+        width={40}
+        height={40}
+        className="size-10 rounded-md object-cover"
+        priority
+      />
       <div className="leading-tight">
         <p className="font-heading text-base font-semibold text-sidebar-foreground">
           Buraq

@@ -38,6 +38,7 @@ enum EnrollmentStatus {
   PENDING // student-requested, awaiting admin approval
   ACTIVE
   COMPLETED
+  INCOMPLETE // booking window elapsed without booking every required week
   CANCELLED
 }
 
@@ -55,6 +56,7 @@ enum CertificateStatus {
 
 enum InvoiceStatus {
   UNPAID
+  PROCESSING // student submitted a transaction id, awaiting admin review
   PAID
   OVERDUE
 }
@@ -121,6 +123,7 @@ model User {
   tickets      SupportTicket[]
   coursesTaught  Course[]       @relation("CourseInstructor")
   sessionsTaught ClassSession[] @relation("SessionInstructor")
+  slotBookings   SlotBooking[]
 
   @@index([role])
   @@index([status])
@@ -181,7 +184,8 @@ model Course {
   durationWeeks Int?
   price        Decimal      @default(0) @db.Decimal(10, 2)
   schedule     String?
-  maxStudents  Int?
+  maxStudents  Int?         // deprecated: no enrollment cap (kept for back-compat)
+  maxBookingsPerWeek Int    @default(1) // slots a student may book per week
   instructor   String?      // legacy/display name; mirrors instructorUser.name when set
   instructorUserId String?
   instructorUser   User?    @relation("CourseInstructor", fields: [instructorUserId], references: [id], onDelete: SetNull)
@@ -194,10 +198,44 @@ model Course {
   certificates Certificate[]
   invoices     Invoice[]
   sessions     ClassSession[]
+  slots        CourseSlot[]
 
   @@index([status])
   @@index([instructorUserId])
   @@map("course")
+}
+
+// Recurring weekly training slot template. Students book concrete occurrences.
+model CourseSlot {
+  id        String   @id @default(cuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  weekday   Int      // 0=Sunday … 6=Saturday
+  startTime String   // "HH:mm"
+  endTime   String   // "HH:mm"
+  capacity  Int      @default(1) // students allowed per occurrence
+  createdAt DateTime @default(now())
+
+  bookings  SlotBooking[]
+
+  @@index([courseId])
+  @@map("course_slot")
+}
+
+// A student's booking of one slot on one concrete date.
+model SlotBooking {
+  id        String     @id @default(cuid())
+  slotId    String
+  slot      CourseSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      DateTime   @db.Date
+  createdAt DateTime   @default(now())
+
+  @@unique([slotId, studentId, date])
+  @@index([slotId, date])
+  @@index([studentId, date])
+  @@map("slot_booking")
 }
 
 model ClassSession {
@@ -226,6 +264,8 @@ model Enrollment {
   course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   startDate DateTime?
   endDate   DateTime?
+  approvedAt DateTime?       // anchors the weekly booking window
+  bonusWeeks Int             @default(0) // admin-granted extra weeks
   progress  Int              @default(0) // 0-100
   status    EnrollmentStatus @default(ACTIVE)
   createdAt DateTime         @default(now())
@@ -308,6 +348,7 @@ model Invoice {
   paidDate      DateTime?
   paymentMethod PaymentMethod?
   reference     String?
+  transactionId String?        // student-submitted payment reference
   status        InvoiceStatus  @default(UNPAID)
   pdfUrl        String?
   createdAt     DateTime       @default(now())

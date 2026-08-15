@@ -31,7 +31,11 @@ export function EnrollButton({
       const res = await request.mutateAsync({ courseId });
       toast.success(res.message);
       setOpen(false);
-      router.refresh();
+      if (res.invoiceId) {
+        router.push(`/student/invoices/${res.invoiceId}`);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       toast.error((err as Error).message);
     }
@@ -48,8 +52,9 @@ export function EnrollButton({
         <DialogHeader>
           <DialogTitle>Request enrollment</DialogTitle>
           <DialogDescription>
-            Request to enroll in <strong>{courseName}</strong>. An administrator
-            must approve your request before you are added to the course.
+            Request to enroll in <strong>{courseName}</strong>. An invoice is
+            generated — submit your payment to start, then an administrator
+            confirms it before you can book slots.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

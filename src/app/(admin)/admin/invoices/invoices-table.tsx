@@ -7,6 +7,7 @@ import {
   Mail,
   MoreHorizontal,
   Plus,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -48,6 +49,7 @@ export type InvoiceRow = {
   dueDate: string;
   status: string;
   paymentMethod: string | null;
+  transactionId: string | null;
   pdfUrl: string | null;
 };
 
@@ -56,7 +58,13 @@ function RowActions({ invoice }: { invoice: InvoiceRow }) {
   const [paidOpen, setPaidOpen] = useState(false);
   const sendEmail = trpc.invoices.sendEmail.useMutation();
   const generatePdf = trpc.invoices.generatePdf.useMutation();
-  const pending = sendEmail.isPending || generatePdf.isPending;
+  const approve = trpc.invoices.approvePayment.useMutation();
+  const reject = trpc.invoices.rejectPayment.useMutation();
+  const pending =
+    sendEmail.isPending ||
+    generatePdf.isPending ||
+    approve.isPending ||
+    reject.isPending;
 
   return (
     <>
@@ -67,6 +75,37 @@ function RowActions({ invoice }: { invoice: InvoiceRow }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {invoice.status === "PROCESSING" && (
+            <>
+              <DropdownMenuItem
+                onClick={async () => {
+                  try {
+                    await approve.mutateAsync({ id: invoice.id });
+                    toast.success("Payment approved. Enrollment activated.");
+                    router.refresh();
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }}
+              >
+                <CheckCircle2 className="mr-2 size-4" /> Approve payment
+                {invoice.transactionId ? ` (${invoice.transactionId})` : ""}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  try {
+                    await reject.mutateAsync({ id: invoice.id });
+                    toast.success("Payment rejected. Student must pay again.");
+                    router.refresh();
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }}
+              >
+                <XCircle className="mr-2 size-4" /> Reject payment
+              </DropdownMenuItem>
+            </>
+          )}
           {invoice.pdfUrl && (
             <DropdownMenuItem asChild>
               <Link
@@ -126,7 +165,13 @@ function RowActions({ invoice }: { invoice: InvoiceRow }) {
   );
 }
 
-const STATUS_FILTERS = ["ALL", "UNPAID", "PAID", "OVERDUE"] as const;
+const STATUS_FILTERS = [
+  "ALL",
+  "UNPAID",
+  "PROCESSING",
+  "PAID",
+  "OVERDUE",
+] as const;
 
 export function InvoicesTable({
   invoices,

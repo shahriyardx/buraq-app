@@ -76,6 +76,29 @@ async function buildInvoiceData(invoiceId: string): Promise<{
   };
 }
 
+/**
+ * Activates the enrollment tied to a paid invoice — the student's booking
+ * window (weeks) starts from payment approval. Only promotes PENDING/CANCELLED
+ * enrollments; never touches already-active or completed ones.
+ */
+async function activatePaidEnrollment(
+  studentId: string,
+  courseId: string | null,
+) {
+  if (!courseId) return;
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { studentId_courseId: { studentId, courseId } },
+  });
+  if (!enrollment) return;
+  if (enrollment.status === "PENDING" || enrollment.status === "CANCELLED") {
+    const now = new Date();
+    await prisma.enrollment.update({
+      where: { id: enrollment.id },
+      data: { status: "ACTIVE", startDate: now, approvedAt: now },
+    });
+  }
+}
+
 export const invoicesRouter = createTRPCRouter({
   list: adminProcedure.query(async () => {
     // Flag past-due invoices before reading so KPIs and rows reflect reality.
@@ -103,6 +126,7 @@ export const invoicesRouter = createTRPCRouter({
         dueDate: i.dueDate.toISOString(),
         status: i.status,
         paymentMethod: i.paymentMethod,
+        transactionId: i.transactionId,
         pdfUrl: i.pdfUrl,
       };
     });
@@ -202,6 +226,7 @@ export const invoicesRouter = createTRPCRouter({
           status: "PAID",
         },
       });
+      await activatePaidEnrollment(invoice.studentId, invoice.courseId);
 
       await logAction({
         actorId: ctx.session.user.id,
@@ -212,6 +237,70 @@ export const invoicesRouter = createTRPCRouter({
         detail: invoice.invoiceNumber,
       });
 
+      return { invoiceNumber: invoice.invoiceNumber };
+    }),
+
+  /** Admin approves a submitted payment → PAID and the enrollment activates. */
+  approvePayment: adminProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.invoice.findUnique({
+        where: { id: input.id },
+        select: { status: true },
+      });
+      if (!existing || existing.status !== "PROCESSING") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only invoices awaiting review can be approved.",
+        });
+      }
+      const invoice = await prisma.invoice.update({
+        where: { id: input.id },
+        data: {
+          status: "PAID",
+          paidDate: new Date(),
+          paymentMethod: "ONLINE",
+        },
+      });
+      await activatePaidEnrollment(invoice.studentId, invoice.courseId);
+
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "invoice.approve_payment",
+        entity: "Invoice",
+        entityId: invoice.id,
+        detail: invoice.invoiceNumber,
+      });
+      return { invoiceNumber: invoice.invoiceNumber };
+    }),
+
+  /** Admin rejects a submitted payment → back to UNPAID; student pays again. */
+  rejectPayment: adminProcedure
+    .input(z.object({ id: z.string().min(1), reason: z.string().nullish() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.invoice.findUnique({
+        where: { id: input.id },
+        select: { status: true },
+      });
+      if (!existing || existing.status !== "PROCESSING") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only invoices awaiting review can be rejected.",
+        });
+      }
+      const invoice = await prisma.invoice.update({
+        where: { id: input.id },
+        data: { status: "UNPAID", transactionId: null },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "invoice.reject_payment",
+        entity: "Invoice",
+        entityId: invoice.id,
+        detail: input.reason ?? invoice.invoiceNumber,
+      });
       return { invoiceNumber: invoice.invoiceNumber };
     }),
 
@@ -350,4 +439,71 @@ export const invoicesRouter = createTRPCRouter({
       outstandingTotal: outstandingTotal.toFixed(2),
     };
   }),
+
+  /** A single invoice owned by the student (payment page). */
+  get: studentProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const [invoice, settings] = await Promise.all([
+        prisma.invoice.findFirst({
+          where: { id: input.id, studentId: ctx.session.user.id },
+          include: { course: { select: { name: true } } },
+        }),
+        prisma.schoolSettings.findUnique({
+          where: { id: "singleton" },
+          select: { currency: true, name: true, email: true, phone: true },
+        }),
+      ]);
+      if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+      return {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        courseName: invoice.course?.name ?? null,
+        amount: invoice.amount.toString(),
+        discount: invoice.discount.toString(),
+        net: (Number(invoice.amount) - Number(invoice.discount)).toFixed(2),
+        dueDate: invoice.dueDate,
+        status: invoice.status,
+        transactionId: invoice.transactionId,
+        pdfUrl: invoice.pdfUrl,
+        currency: settings?.currency ?? DEFAULT_CURRENCY,
+        schoolName: settings?.name ?? "Buraq Horse Riding School",
+        schoolEmail: settings?.email ?? null,
+        schoolPhone: settings?.phone ?? null,
+      };
+    }),
+
+  /** Student submits a transaction id → invoice moves to PROCESSING. */
+  submitPayment: studentProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        transactionId: z.string().min(3, "Enter a valid transaction id"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const invoice = await prisma.invoice.findFirst({
+        where: { id: input.id, studentId: ctx.session.user.id },
+        select: { id: true, status: true },
+      });
+      if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+      if (invoice.status !== "UNPAID" && invoice.status !== "OVERDUE") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            invoice.status === "PROCESSING"
+              ? "Your payment is already under review."
+              : "This invoice is already paid.",
+        });
+      }
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          transactionId: input.transactionId,
+          paymentMethod: "ONLINE",
+          status: "PROCESSING",
+        },
+      });
+      return { ok: true };
+    }),
 });

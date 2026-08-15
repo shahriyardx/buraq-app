@@ -2,6 +2,7 @@ import { createTRPCRouter } from "../init";
 import { accountRouter } from "./account";
 import { announcementsRouter } from "./announcements";
 import { attendanceRouter } from "./attendance";
+import { bookingsRouter } from "./bookings";
 import { bootstrapRouter } from "./bootstrap";
 import { certificatesRouter } from "./certificates";
 import { coursesRouter } from "./courses";
@@ -27,6 +28,7 @@ export const appRouter = createTRPCRouter({
   support: supportRouter,
   settings: settingsRouter,
   announcements: announcementsRouter,
+  bookings: bookingsRouter,
   dashboard: dashboardRouter,
   account: accountRouter,
   bootstrap: bootstrapRouter,

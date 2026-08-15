@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -44,11 +44,31 @@ const schema = z.object({
   price: z
     .string()
     .refine((v) => v.trim() !== "" && Number(v) >= 0, "Price must be positive"),
-  maxStudents: z.string().optional(),
+  maxBookingsPerWeek: z.string().optional(),
   schedule: z.string().optional(),
+  slots: z
+    .array(
+      z.object({
+        weekday: z.string(),
+        startTime: z.string().min(1, "Required"),
+        endTime: z.string().min(1, "Required"),
+        capacity: z.string().min(1, "Required"),
+      }),
+    )
+    .optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
+
+const WEEKDAYS = [
+  { value: "1", label: "Monday" },
+  { value: "2", label: "Tuesday" },
+  { value: "3", label: "Wednesday" },
+  { value: "4", label: "Thursday" },
+  { value: "5", label: "Friday" },
+  { value: "6", label: "Saturday" },
+  { value: "0", label: "Sunday" },
+];
 
 export type CourseFormValues = {
   id: string;
@@ -57,7 +77,7 @@ export type CourseFormValues = {
   level: string | null;
   durationWeeks: number | null;
   price: string;
-  maxStudents: number | null;
+  maxBookingsPerWeek: number;
   instructor: string | null;
   instructorUserId: string | null;
   schedule: string | null;
@@ -98,11 +118,16 @@ export function CourseFormDialog({
       durationWeeks:
         course?.durationWeeks != null ? String(course.durationWeeks) : "",
       price: course?.price ?? "0",
-      maxStudents:
-        course?.maxStudents != null ? String(course.maxStudents) : "",
+      maxBookingsPerWeek:
+        course?.maxBookingsPerWeek != null
+          ? String(course.maxBookingsPerWeek)
+          : "1",
       schedule: course?.schedule ?? "",
+      slots: [],
     },
   });
+
+  const slots = useFieldArray({ control, name: "slots" });
 
   const create = trpc.courses.create.useMutation();
   const update = trpc.courses.update.useMutation();
@@ -120,13 +145,24 @@ export function CourseFormDialog({
           : null,
       durationWeeks: toInt(values.durationWeeks),
       price: Number(values.price),
-      maxStudents: toInt(values.maxStudents),
+      maxBookingsPerWeek: toInt(values.maxBookingsPerWeek) ?? 1,
       schedule: values.schedule || null,
     };
 
     try {
       if (mode === "create") {
-        await create.mutateAsync(payload);
+        const slotsPayload = (values.slots ?? [])
+          .filter((s) => s.startTime && s.endTime)
+          .map((s) => ({
+            weekday: Number(s.weekday),
+            startTime: s.startTime,
+            endTime: s.endTime,
+            capacity: Math.max(1, toInt(s.capacity) ?? 1),
+          }));
+        await create.mutateAsync({
+          ...payload,
+          slots: slotsPayload.length ? slotsPayload : undefined,
+        });
         toast.success(`Course ${values.name} created.`);
       } else if (course) {
         await update.mutateAsync({ id: course.id, ...payload });
@@ -276,11 +312,18 @@ export function CourseFormDialog({
 
             <Controller
               control={control}
-              name="maxStudents"
+              name="maxBookingsPerWeek"
               render={({ field }) => (
                 <Field>
-                  <FieldLabel htmlFor="maxStudents">Max students</FieldLabel>
-                  <Input id="maxStudents" type="number" min={0} {...field} />
+                  <FieldLabel htmlFor="maxBookingsPerWeek">
+                    Bookings / week
+                  </FieldLabel>
+                  <Input
+                    id="maxBookingsPerWeek"
+                    type="number"
+                    min={1}
+                    {...field}
+                  />
                 </Field>
               )}
             />
@@ -290,7 +333,7 @@ export function CourseFormDialog({
               name="schedule"
               render={({ field }) => (
                 <Field>
-                  <FieldLabel htmlFor="schedule">Schedule</FieldLabel>
+                  <FieldLabel htmlFor="schedule">Schedule (label)</FieldLabel>
                   <Input
                     id="schedule"
                     placeholder="e.g. Mon & Wed 4pm"
@@ -300,6 +343,116 @@ export function CourseFormDialog({
               )}
             />
           </FieldGroup>
+
+          {mode === "create" && (
+            <div className="mt-5 space-y-3 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Training slots</p>
+                  <p className="text-xs text-muted-foreground">
+                    Weekly time windows students can book. Add more later on the
+                    course page.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    slots.append({
+                      weekday: "1",
+                      startTime: "16:00",
+                      endTime: "17:00",
+                      capacity: "6",
+                    })
+                  }
+                >
+                  Add slot
+                </Button>
+              </div>
+
+              {slots.fields.length === 0 ? (
+                <p className="py-2 text-center text-xs text-muted-foreground">
+                  No slots yet.
+                </p>
+              ) : (
+                slots.fields.map((f, idx) => (
+                  <div
+                    key={f.id}
+                    className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]"
+                  >
+                    <Controller
+                      control={control}
+                      name={`slots.${idx}.weekday`}
+                      render={({ field }) => (
+                        <Field>
+                          <FieldLabel>Day</FieldLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {WEEKDAYS.map((d) => (
+                                <SelectItem key={d.value} value={d.value}>
+                                  {d.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      )}
+                    />
+                    <Controller
+                      control={control}
+                      name={`slots.${idx}.startTime`}
+                      render={({ field }) => (
+                        <Field>
+                          <FieldLabel>Start</FieldLabel>
+                          <Input type="time" {...field} />
+                        </Field>
+                      )}
+                    />
+                    <Controller
+                      control={control}
+                      name={`slots.${idx}.endTime`}
+                      render={({ field }) => (
+                        <Field>
+                          <FieldLabel>End</FieldLabel>
+                          <Input type="time" {...field} />
+                        </Field>
+                      )}
+                    />
+                    <Controller
+                      control={control}
+                      name={`slots.${idx}.capacity`}
+                      render={({ field }) => (
+                        <Field>
+                          <FieldLabel>Seats</FieldLabel>
+                          <Input
+                            type="number"
+                            min={1}
+                            className="w-20"
+                            {...field}
+                          />
+                        </Field>
+                      )}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => slots.remove(idx)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
 
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={pending}>

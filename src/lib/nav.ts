@@ -34,6 +34,7 @@ export const studentNav: NavItem[] = [
     icon: "calendar-check",
   },
   { label: "My Courses", href: "/student/courses", icon: "book-open" },
+  { label: "Book Training", href: "/student/bookings", icon: "clipboard" },
   { label: "Certificates", href: "/student/certificates", icon: "award" },
   { label: "Invoices", href: "/student/invoices", icon: "receipt" },
   { label: "Support", href: "/student/support", icon: "life-buoy" },

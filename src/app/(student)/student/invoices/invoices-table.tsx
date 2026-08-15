@@ -29,7 +29,12 @@ export function StudentInvoicesTable({
       key: "invoiceNumber",
       header: "Invoice #",
       render: (i) => (
-        <span className="font-mono text-xs">{i.invoiceNumber}</span>
+        <Link
+          href={`/student/invoices/${i.id}`}
+          className="font-mono text-xs hover:underline"
+        >
+          {i.invoiceNumber}
+        </Link>
       ),
     },
     {

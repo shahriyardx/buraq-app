@@ -22,6 +22,8 @@ import { api } from "@/trpc/server";
 import { CourseFormDialog } from "../course-form-dialog";
 import { ClassSchedule } from "./class-schedule";
 import { EnrollStudentDialog } from "./enroll-student-dialog";
+import { GrantWeekButton } from "./grant-week-button";
+import { SlotManager } from "./slot-manager";
 
 export const metadata: Metadata = { title: "Course detail" };
 
@@ -38,6 +40,7 @@ export default async function CourseDetailPage({
 
   const currency = await getCurrency();
   const available = course.available;
+  const slots = await api.courses.slots({ courseId: id });
   const sessions = (await api.courses.classSessions({ courseId: id })).map(
     (s) => ({
       id: s.id,
@@ -56,11 +59,9 @@ export default async function CourseDetailPage({
       course.durationWeeks != null ? `${course.durationWeeks} wks` : "—",
     ],
     ["Price", formatCurrency(course.price, currency)],
+    ["Bookings / week", String(course.maxBookingsPerWeek)],
     ["Schedule", course.schedule ?? "—"],
-    [
-      "Enrolled",
-      `${course.enrollments.length}${course.maxStudents != null ? ` / ${course.maxStudents}` : ""}`,
-    ],
+    ["Enrolled", String(course.enrollments.length)],
     ["Created", formatDate(course.createdAt)],
   ];
 
@@ -80,7 +81,7 @@ export default async function CourseDetailPage({
             level: course.level,
             durationWeeks: course.durationWeeks,
             price: course.price,
-            maxStudents: course.maxStudents,
+            maxBookingsPerWeek: course.maxBookingsPerWeek,
             instructor: course.instructor,
             instructorUserId: course.instructorUserId,
             schedule: course.schedule,
@@ -117,15 +118,16 @@ export default async function CourseDetailPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
-                  <TableHead>Progress</TableHead>
+                  <TableHead>Weeks</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {course.enrollments.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={3}
+                      colSpan={4}
                       className="h-20 text-center text-muted-foreground"
                     >
                       No students enrolled yet.
@@ -142,9 +144,19 @@ export default async function CourseDetailPage({
                           {e.studentName}
                         </Link>
                       </TableCell>
-                      <TableCell>{e.progress}%</TableCell>
+                      <TableCell className="tabular-nums">
+                        {e.requiredWeeks > 0
+                          ? `${e.completedWeeks}/${e.requiredWeeks}${e.bonusWeeks ? ` (+${e.bonusWeeks})` : ""}`
+                          : "—"}
+                      </TableCell>
                       <TableCell>
                         <StatusBadge status={e.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(e.status === "INCOMPLETE" ||
+                          e.status === "ACTIVE") && (
+                          <GrantWeekButton enrollmentId={e.id} />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -152,6 +164,8 @@ export default async function CourseDetailPage({
               </TableBody>
             </Table>
           </Card>
+
+          <SlotManager courseId={course.id} slots={slots} />
 
           <ClassSchedule courseId={course.id} sessions={sessions} />
         </div>

@@ -197,6 +197,7 @@ async function main() {
       name: "Beginner Horsemanship",
       level: "Beginner",
       durationWeeks: 8,
+      maxBookingsPerWeek: 2,
       price: 480,
       instructor: "Sarah Miller",
       schedule: "Mon & Wed 4:00 PM",
@@ -207,6 +208,7 @@ async function main() {
       name: "Intermediate Show Jumping",
       level: "Intermediate",
       durationWeeks: 10,
+      maxBookingsPerWeek: 1,
       price: 720,
       instructor: "James Cole",
       schedule: "Tue & Thu 5:00 PM",
@@ -217,6 +219,7 @@ async function main() {
       name: "Advanced Dressage",
       level: "Advanced",
       durationWeeks: 12,
+      maxBookingsPerWeek: 1,
       price: 960,
       instructor: "Elena Petrova",
       schedule: "Sat 9:00 AM",
@@ -233,13 +236,39 @@ async function main() {
       courses.push(
         await prisma.course.update({
           where: { id: existing.id },
-          data: { instructorUserId },
+          data: {
+            instructorUserId,
+            durationWeeks: c.durationWeeks,
+            maxBookingsPerWeek: c.maxBookingsPerWeek,
+          },
         }),
       );
     } else {
       courses.push(
         await prisma.course.create({ data: { ...c, instructorUserId } }),
       );
+    }
+  }
+
+  // ── Training slots (recurring weekly) ─────────────────────────────────────
+  const slotsByCourse: Record<string, number[]> = {
+    "Beginner Horsemanship": [1, 3], // Mon, Wed
+    "Intermediate Show Jumping": [2, 4], // Tue, Thu
+    "Advanced Dressage": [6], // Sat
+  };
+  for (const course of courses) {
+    const existing = await prisma.courseSlot.count({
+      where: { courseId: course.id },
+    });
+    if (existing > 0) continue;
+    const days = slotsByCourse[course.name] ?? [1];
+    for (const weekday of days) {
+      await prisma.courseSlot.createMany({
+        data: [
+          { courseId: course.id, weekday, startTime: "16:00", endTime: "17:00", capacity: 6 },
+          { courseId: course.id, weekday, startTime: "17:00", endTime: "18:00", capacity: 6 },
+        ],
+      });
     }
   }
 
@@ -278,6 +307,7 @@ async function main() {
         courseId: course.id,
         status: "ACTIVE",
         startDate: new Date(),
+        approvedAt: new Date(),
         progress: 30 + i * 10,
       },
     });

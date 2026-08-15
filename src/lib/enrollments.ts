@@ -29,7 +29,13 @@ export async function enrollStudent(input: {
         data: { status },
       })
     : await prisma.enrollment.create({
-        data: { studentId, courseId, status, startDate: new Date() },
+        data: {
+          studentId,
+          courseId,
+          status,
+          startDate: new Date(),
+          approvedAt: status === "ACTIVE" ? new Date() : null,
+        },
       });
 
   // Only invoice fresh, active enrollments with a positive price.

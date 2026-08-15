@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
+import { computeProgress, loadBookedWeekKeys } from "@/lib/enrollment";
 import { enrollStudent } from "@/lib/enrollments";
 import { generateInvoiceNumber } from "@/lib/ids";
 import { notifyStudent } from "@/lib/notify";
@@ -19,8 +20,20 @@ const courseInput = z.object({
     .int()
     .min(0, "Max students must be positive")
     .nullish(),
+  maxBookingsPerWeek: z
+    .number()
+    .int()
+    .min(1, "Must allow at least 1 booking per week")
+    .default(1),
   instructor: z.string().nullish(), // manual fallback when no account is linked
   instructorUserId: z.string().nullish(),
+});
+
+const slotInput = z.object({
+  weekday: z.number().int().min(0).max(6),
+  startTime: z.string().min(1, "Start time required"),
+  endTime: z.string().min(1, "End time required"),
+  capacity: z.number().int().min(1, "Capacity must be at least 1"),
 });
 
 /**
@@ -47,6 +60,7 @@ async function courseData(input: z.infer<typeof courseInput>) {
     price: input.price,
     schedule: input.schedule ?? null,
     maxStudents: input.maxStudents ?? null,
+    maxBookingsPerWeek: input.maxBookingsPerWeek ?? 1,
     instructor,
     instructorUserId,
   };
@@ -65,6 +79,7 @@ export const coursesRouter = createTRPCRouter({
         price: true,
         schedule: true,
         maxStudents: true,
+        maxBookingsPerWeek: true,
         instructor: true,
         instructorUserId: true,
         status: true,
@@ -80,6 +95,7 @@ export const coursesRouter = createTRPCRouter({
       price: c.price.toString(),
       schedule: c.schedule,
       maxStudents: c.maxStudents,
+      maxBookingsPerWeek: c.maxBookingsPerWeek,
       instructor: c.instructor,
       instructorUserId: c.instructorUserId,
       status: c.status,
@@ -97,6 +113,7 @@ export const coursesRouter = createTRPCRouter({
             include: { student: { select: { id: true, name: true } } },
             orderBy: { createdAt: "desc" },
           },
+          slots: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
         },
       });
       if (!course) throw new TRPCError({ code: "NOT_FOUND" });
@@ -109,6 +126,38 @@ export const coursesRouter = createTRPCRouter({
       });
       const available = students.filter((s) => !enrolledIds.has(s.id));
 
+      // Derive each enrollment's booking-window progress + persist transitions.
+      const progressById = new Map<
+        string,
+        Awaited<ReturnType<typeof computeProgress>>
+      >();
+      await Promise.all(
+        course.enrollments.map(async (e) => {
+          const booked = await loadBookedWeekKeys(e.studentId, course.id);
+          const p = computeProgress(
+            {
+              id: e.id,
+              studentId: e.studentId,
+              courseId: course.id,
+              status: e.status,
+              approvedAt: e.approvedAt,
+              startDate: e.startDate,
+              createdAt: e.createdAt,
+              bonusWeeks: e.bonusWeeks,
+              course: { durationWeeks: course.durationWeeks },
+            },
+            booked,
+          );
+          progressById.set(e.id, p);
+          if (p.derivedStatus !== e.status) {
+            await prisma.enrollment.update({
+              where: { id: e.id },
+              data: { status: p.derivedStatus as never },
+            });
+          }
+        }),
+      );
+
       return {
         id: course.id,
         name: course.name,
@@ -118,35 +167,56 @@ export const coursesRouter = createTRPCRouter({
         price: course.price.toString(),
         schedule: course.schedule,
         maxStudents: course.maxStudents,
+        maxBookingsPerWeek: course.maxBookingsPerWeek,
         instructor: course.instructor,
         instructorUserId: course.instructorUserId,
         status: course.status,
         createdAt: course.createdAt,
-        enrollments: course.enrollments.map((e) => ({
-          id: e.id,
-          studentId: e.student.id,
-          studentName: e.student.name,
-          progress: e.progress,
-          status: e.status,
+        enrollments: course.enrollments.map((e) => {
+          const p = progressById.get(e.id);
+          return {
+            id: e.id,
+            studentId: e.student.id,
+            studentName: e.student.name,
+            progress: e.progress,
+            status: p?.derivedStatus ?? e.status,
+            requiredWeeks: p?.requiredWeeks ?? 0,
+            completedWeeks: p?.completedWeeks ?? 0,
+            bonusWeeks: p?.bonusWeeks ?? e.bonusWeeks,
+          };
+        }),
+        slots: course.slots.map((s) => ({
+          id: s.id,
+          weekday: s.weekday,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          capacity: s.capacity,
         })),
         available,
       };
     }),
 
-  create: adminProcedure.input(courseInput).mutation(async ({ ctx, input }) => {
-    const course = await prisma.course.create({
-      data: await courseData(input),
-    });
-    await logAction({
-      actorId: ctx.session.user.id,
-      actorName: ctx.session.user.name,
-      action: "course.create",
-      entity: "Course",
-      entityId: course.id,
-      detail: course.name,
-    });
-    return { id: course.id, name: course.name };
-  }),
+  create: adminProcedure
+    .input(courseInput.extend({ slots: z.array(slotInput).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const course = await prisma.course.create({
+        data: await courseData(input),
+      });
+      if (input.slots?.length) {
+        await prisma.courseSlot.createMany({
+          data: input.slots.map((s) => ({ courseId: course.id, ...s })),
+        });
+      }
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "course.create",
+        entity: "Course",
+        entityId: course.id,
+        detail: course.name,
+      });
+      return { id: course.id, name: course.name };
+    }),
 
   update: adminProcedure
     .input(courseInput.extend({ id: z.string() }))
@@ -229,9 +299,10 @@ export const coursesRouter = createTRPCRouter({
         return { ok: false };
       }
 
+      const now = new Date();
       await prisma.enrollment.update({
         where: { id: input.id },
-        data: { status: "ACTIVE", startDate: new Date() },
+        data: { status: "ACTIVE", startDate: now, approvedAt: now },
       });
 
       // Auto-invoice on approval (the enrollment row already existed, so the
@@ -362,6 +433,103 @@ export const coursesRouter = createTRPCRouter({
       return { ok: true };
     }),
 
+  // ─── Training slots (recurring weekly templates) ──────────────────────────
+  slots: adminProcedure
+    .input(z.object({ courseId: z.string() }))
+    .query(async ({ input }) => {
+      const slots = await prisma.courseSlot.findMany({
+        where: { courseId: input.courseId },
+        orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+        include: { _count: { select: { bookings: true } } },
+      });
+      return slots.map((s) => ({
+        id: s.id,
+        weekday: s.weekday,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        capacity: s.capacity,
+        bookingCount: s._count.bookings,
+      }));
+    }),
+
+  addSlot: adminProcedure
+    .input(slotInput.extend({ courseId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.endTime <= input.startTime) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "End time must be after start time.",
+        });
+      }
+      const slot = await prisma.courseSlot.create({
+        data: {
+          courseId: input.courseId,
+          weekday: input.weekday,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          capacity: input.capacity,
+        },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "course_slot.add",
+        entity: "CourseSlot",
+        entityId: slot.id,
+      });
+      return { id: slot.id };
+    }),
+
+  deleteSlot: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Cascades to bookings on this slot.
+      await prisma.courseSlot.delete({ where: { id: input.id } });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "course_slot.delete",
+        entity: "CourseSlot",
+        entityId: input.id,
+      });
+      return { ok: true };
+    }),
+
+  /** Grant an enrollment one more bookable week (reopens if INCOMPLETE). */
+  grantExtraWeek: adminProcedure
+    .input(
+      z.object({
+        enrollmentId: z.string(),
+        weeks: z.number().int().min(1).default(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const current = await prisma.enrollment.findUnique({
+        where: { id: input.enrollmentId },
+        select: { status: true },
+      });
+      if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+      const enrollment = await prisma.enrollment.update({
+        where: { id: input.enrollmentId },
+        data: {
+          bonusWeeks: { increment: input.weeks },
+          // Reopen only a closed (INCOMPLETE) window; never un-complete.
+          ...(current.status === "INCOMPLETE"
+            ? { status: "ACTIVE" as const }
+            : {}),
+        },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "enrollment.grant_week",
+        entity: "Enrollment",
+        entityId: enrollment.id,
+        detail: `+${input.weeks} week(s)`,
+      });
+      return { ok: true };
+    }),
+
   myCourses: studentProcedure.query(async ({ ctx }) => {
     const studentId = ctx.session.user.id;
     const [enrollments, activeCourses, certificates] = await Promise.all([
@@ -462,27 +630,63 @@ export const coursesRouter = createTRPCRouter({
         });
       }
 
+      const price = Number(course.price);
+      const free = price <= 0;
+
       // Re-requesting a previously cancelled enrollment reuses the row (the
       // (student, course) pair is unique); otherwise create a fresh request.
+      // Free courses activate immediately (no payment gate).
+      const now = new Date();
+      const enrollData = free
+        ? { status: "ACTIVE" as const, startDate: now, approvedAt: now }
+        : { status: "PENDING" as const, startDate: null, endDate: null };
       if (existing) {
         await prisma.enrollment.update({
           where: { id: existing.id },
-          data: {
-            status: "PENDING",
-            progress: 0,
-            startDate: null,
-            endDate: null,
-          },
+          data: { ...enrollData, progress: 0 },
         });
       } else {
         await prisma.enrollment.create({
-          data: { studentId, courseId, status: "PENDING" },
+          data: { studentId, courseId, ...enrollData },
+        });
+      }
+
+      if (free) {
+        return {
+          ok: true,
+          invoiceId: null,
+          message: `Enrolled in ${course.name}. You can now book training slots.`,
+        };
+      }
+
+      // Reuse an existing open invoice for this course, else create one.
+      let invoice = await prisma.invoice.findFirst({
+        where: {
+          studentId,
+          courseId,
+          status: { in: ["UNPAID", "OVERDUE", "PROCESSING"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!invoice) {
+        const due = new Date();
+        due.setDate(due.getDate() + 14);
+        invoice = await prisma.invoice.create({
+          data: {
+            invoiceNumber: generateInvoiceNumber(),
+            studentId,
+            courseId,
+            amount: course.price,
+            dueDate: due,
+            status: "UNPAID",
+          },
         });
       }
 
       return {
         ok: true,
-        message: `Enrollment requested for ${course.name}. Awaiting admin approval.`,
+        invoiceId: invoice.id,
+        message: `Enrollment requested for ${course.name}. Complete payment to continue.`,
       };
     }),
 });

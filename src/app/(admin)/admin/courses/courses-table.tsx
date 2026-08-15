@@ -33,6 +33,7 @@ export type CourseRow = {
   price: string;
   schedule: string | null;
   maxStudents: number | null;
+  maxBookingsPerWeek: number;
   instructor: string | null;
   instructorUserId: string | null;
   status: string;
@@ -102,7 +103,7 @@ function RowActions({ course }: { course: CourseRow }) {
           level: course.level,
           durationWeeks: course.durationWeeks,
           price: course.price,
-          maxStudents: course.maxStudents,
+          maxBookingsPerWeek: course.maxBookingsPerWeek,
           instructor: course.instructor,
           instructorUserId: course.instructorUserId,
           schedule: course.schedule,

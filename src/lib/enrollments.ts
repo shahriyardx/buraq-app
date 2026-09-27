@@ -1,7 +1,25 @@
 import "server-only";
 import { generateInvoiceNumber } from "@/lib/ids";
+import { emailInvoice } from "@/lib/invoices";
 import { notifyStudent } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { appUrl } from "@/lib/qr";
+
+/** Template variables for the ENROLLMENT email. */
+export function enrollmentEmailVars(course: {
+  name: string;
+  level: string | null;
+  durationWeeks: number | null;
+}) {
+  return {
+    courseName: course.name,
+    courseLevel: course.level,
+    duration: course.durationWeeks
+      ? `${course.durationWeeks} week${course.durationWeeks === 1 ? "" : "s"}`
+      : null,
+    bookingsUrl: appUrl("/student/bookings"),
+  };
+}
 
 /**
  * Enrolls a student in a course and (by default) auto-generates an invoice for
@@ -64,7 +82,7 @@ export async function enrollStudent(input: {
     if (!openInvoice) {
       const due = new Date(now);
       due.setDate(due.getDate() + 14);
-      await prisma.invoice.create({
+      const invoice = await prisma.invoice.create({
         data: {
           invoiceNumber: generateInvoiceNumber(),
           studentId,
@@ -75,6 +93,8 @@ export async function enrollStudent(input: {
           ...(invoicePaid ? { paidDate: now, paymentMethod: "CASH" } : {}),
         },
       });
+      // An admin-covered (already paid) invoice needs no payment email.
+      if (!invoicePaid) await emailInvoice(invoice.id, "INVOICE");
     }
   }
 
@@ -83,7 +103,7 @@ export async function enrollStudent(input: {
     await notifyStudent({
       studentId,
       templateKey: "ENROLLMENT",
-      vars: { courseName: course.name },
+      vars: enrollmentEmailVars(course),
     });
   }
 

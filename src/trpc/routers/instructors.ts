@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { generateInstructorId } from "@/lib/ids";
+import { notifyAccountCreated } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { createUserWithPassword } from "@/lib/users";
 import { adminProcedure, createTRPCRouter } from "../init";
@@ -140,6 +141,7 @@ export const instructorsRouter = createTRPCRouter({
         specialties: input.specialties ?? null,
         photoUrl: input.photoUrl ?? null,
       });
+      await notifyAccountCreated({ ...instructor, role: "INSTRUCTOR" });
 
       await logAction({
         actorId: ctx.session.user.id,

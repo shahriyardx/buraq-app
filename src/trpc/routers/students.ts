@@ -4,7 +4,9 @@ import { logAction } from "@/lib/audit";
 import { parseCsv } from "@/lib/csv";
 import { enrollStudent } from "@/lib/enrollments";
 import { generateStudentId } from "@/lib/ids";
+import { notifyAccountCreated, notifyAdmins, notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { appUrl } from "@/lib/qr";
 import { createUserWithPassword } from "@/lib/users";
 import { adminProcedure, createTRPCRouter, publicProcedure } from "../init";
 
@@ -46,6 +48,22 @@ export const studentsRouter = createTRPCRouter({
         address: input.address ?? null,
         dob: toDate(input.dob),
         photoUrl: input.photoUrl ?? null,
+      });
+
+      await notifyUser({
+        userId: student.id,
+        key: "WELCOME",
+        vars: { email: student.email, studentId: student.studentId },
+      });
+      await notifyAdmins({
+        key: "ADMIN_NEW_REGISTRATION",
+        vars: {
+          studentName: student.name,
+          studentEmail: student.email,
+          studentPhone: student.phone,
+          studentId: student.studentId,
+          studentUrl: appUrl(`/admin/students/${student.id}`),
+        },
       });
       return { id: student.id, name: student.name };
     }),
@@ -175,6 +193,7 @@ export const studentsRouter = createTRPCRouter({
         dob: toDate(input.dob),
         photoUrl: input.photoUrl ?? null,
       });
+      await notifyAccountCreated({ ...student, role: "STUDENT" });
 
       if (input.courseId) {
         await enrollStudent({
@@ -269,7 +288,7 @@ export const studentsRouter = createTRPCRouter({
           const gender = ["MALE", "FEMALE", "OTHER"].includes(g)
             ? (g as "MALE" | "FEMALE" | "OTHER")
             : null;
-          await createUserWithPassword({
+          const imported = await createUserWithPassword({
             name,
             email,
             password: row.password?.trim() || "Student@123",
@@ -279,6 +298,7 @@ export const studentsRouter = createTRPCRouter({
             gender,
             address: row.address?.trim() || null,
           });
+          await notifyAccountCreated({ ...imported, role: "STUDENT" });
           created++;
         } catch (err) {
           failures.push(`${email}: ${(err as Error).message}`);

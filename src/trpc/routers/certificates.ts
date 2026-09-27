@@ -146,7 +146,12 @@ export const certificatesRouter = createTRPCRouter({
       await notifyStudent({
         studentId: student.id,
         templateKey: "CERTIFICATE",
-        vars: { courseName: course.name, certificateId },
+        vars: {
+          courseName: course.name,
+          certificateId,
+          issuedDate: formatDate(issuedDate),
+          verifyUrl,
+        },
         attachments: [{ filename: `${certificateId}.pdf`, content: buf }],
       });
 

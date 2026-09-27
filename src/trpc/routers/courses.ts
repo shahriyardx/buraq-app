@@ -6,8 +6,9 @@ import {
   loadBookedWeekKeys,
   subSessions,
 } from "@/lib/enrollment";
-import { enrollStudent } from "@/lib/enrollments";
+import { enrollmentEmailVars, enrollStudent } from "@/lib/enrollments";
 import { generateInvoiceNumber } from "@/lib/ids";
+import { emailInvoice } from "@/lib/invoices";
 import { notifyStudent } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { adminProcedure, createTRPCRouter, studentProcedure } from "../init";
@@ -360,7 +361,7 @@ export const coursesRouter = createTRPCRouter({
       if (Number(enrollment.course.price) > 0) {
         const due = new Date();
         due.setDate(due.getDate() + 14);
-        await prisma.invoice.create({
+        const invoice = await prisma.invoice.create({
           data: {
             invoiceNumber: generateInvoiceNumber(),
             studentId: enrollment.studentId,
@@ -370,12 +371,13 @@ export const coursesRouter = createTRPCRouter({
             status: "UNPAID",
           },
         });
+        await emailInvoice(invoice.id, "INVOICE");
       }
 
       await notifyStudent({
         studentId: enrollment.studentId,
         templateKey: "ENROLLMENT",
-        vars: { courseName: enrollment.course.name },
+        vars: enrollmentEmailVars(enrollment.course),
       });
 
       await logAction({
@@ -940,6 +942,11 @@ export const coursesRouter = createTRPCRouter({
       }
 
       if (free) {
+        await notifyStudent({
+          studentId,
+          templateKey: "ENROLLMENT",
+          vars: enrollmentEmailVars(course),
+        });
         return {
           ok: true,
           invoiceId: null,
@@ -969,6 +976,7 @@ export const coursesRouter = createTRPCRouter({
             status: "UNPAID",
           },
         });
+        await emailInvoice(invoice.id, "INVOICE");
       }
 
       return {

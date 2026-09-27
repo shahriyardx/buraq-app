@@ -1,20 +1,63 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
+import {
+  EMAIL_TEMPLATE_KEYS,
+  EMAIL_TEMPLATES,
+  type EmailTemplateKey,
+} from "@/lib/mail/templates";
+import { notifyAccountCreated, sendTemplateEmail } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { appUrl } from "@/lib/qr";
 import { createUserWithPassword } from "@/lib/users";
 import { adminProcedure, createTRPCRouter } from "../init";
 
 const SINGLETON = "singleton";
 
-const TEMPLATE_ORDER = [
-  "ENROLLMENT",
-  "INVOICE",
-  "CERTIFICATE",
-  "SUPPORT",
-] as const;
+const emailKeyEnum = z.enum(
+  EMAIL_TEMPLATE_KEYS as [EmailTemplateKey, ...EmailTemplateKey[]],
+);
 
-const emailKeyEnum = z.enum(TEMPLATE_ORDER);
+/** Example values so a test email shows every field filled in. */
+function sampleVars(): Record<string, string> {
+  return {
+    email: "rider@example.com",
+    studentId: "BURAQ-STU-000123",
+    memberId: "BURAQ-STU-000123",
+    roleLabel: "student",
+    courseName: "Beginner Riding",
+    courseLevel: "Level 1",
+    duration: "8 weeks",
+    invoiceNumber: "INV-2026-000123",
+    description: "Course enrollment: Beginner Riding",
+    amount: "৳12,000.00",
+    dueDate: "Oct 15, 2026",
+    paidDate: "Sep 30, 2026",
+    method: "Online payment",
+    transactionId: "TXN-9F3K21",
+    reason: "The transaction ID did not match our records.",
+    enrollmentNote:
+      "Your enrollment in Beginner Riding is now active, and you can start booking your riding sessions.",
+    certificateId: "BURAQ-2026-ABC123",
+    issuedDate: "Sep 28, 2026",
+    ticketId: "TKT-000123",
+    subject: "Question about session times",
+    category: "General",
+    message:
+      "Thank you for your message. Weekend sessions start at 9:00 AM. Please arrive 15 minutes early.",
+    studentName: "Ayesha Rahman",
+    studentEmail: "ayesha@example.com",
+    studentPhone: "+880 1700-000000",
+    resetUrl: appUrl("/reset-password"),
+    setPasswordUrl: appUrl("/forgot-password"),
+    bookingsUrl: appUrl("/student/bookings"),
+    invoiceUrl: appUrl("/student/invoices"),
+    verifyUrl: appUrl("/verify/BURAQ-2026-ABC123"),
+    ticketUrl: appUrl("/student/support"),
+    studentUrl: appUrl("/admin/students"),
+    reviewUrl: appUrl("/admin/invoices"),
+  };
+}
 
 export const settingsRouter = createTRPCRouter({
   get: adminProcedure.query(async ({ ctx }) => {
@@ -52,12 +95,15 @@ export const settingsRouter = createTRPCRouter({
     };
 
     const byKey = new Map(emailTemplates.map((t) => [t.key, t]));
-    const templates = TEMPLATE_ORDER.map((key) => {
+    // Code defaults, with any admin-saved subject/body on top.
+    const templates = EMAIL_TEMPLATE_KEYS.map((key) => {
       const t = byKey.get(key);
+      const def = EMAIL_TEMPLATES[key];
       return {
         key,
-        subject: t?.subject ?? "",
-        body: t?.body ?? "",
+        subject: t?.subject || def.subject,
+        body: t?.body || def.body,
+        customized: Boolean(t),
       };
     });
 
@@ -84,15 +130,32 @@ export const settingsRouter = createTRPCRouter({
   myProfile: adminProcedure.query(async ({ ctx }) => {
     const user = await prisma.user.findUnique({
       where: { id: ctx.session.user.id },
-      select: { name: true, email: true, phone: true, photoUrl: true },
+      select: {
+        name: true,
+        email: true,
+        phone: true,
+        photoUrl: true,
+        emailNotifications: true,
+      },
     });
     return {
       name: user?.name ?? "",
       email: user?.email ?? "",
       phone: user?.phone ?? null,
       photoUrl: user?.photoUrl ?? null,
+      emailNotifications: user?.emailNotifications ?? true,
     };
   }),
+
+  updateMyNotifications: adminProcedure
+    .input(z.object({ emailNotifications: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: { emailNotifications: input.emailNotifications },
+      });
+      return { ok: true };
+    }),
 
   updateMyProfile: adminProcedure
     .input(
@@ -221,6 +284,43 @@ export const settingsRouter = createTRPCRouter({
       return { ok: true };
     }),
 
+  /** Drops the admin override so the built-in default is used again. */
+  resetEmailTemplate: adminProcedure
+    .input(z.object({ key: emailKeyEnum }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.emailTemplate.deleteMany({ where: { key: input.key } });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "settings.email_template_reset",
+        entity: "EmailTemplate",
+        detail: input.key,
+      });
+      return { ok: true };
+    }),
+
+  /** Sends the saved template, with example values, to the current admin. */
+  sendTestEmail: adminProcedure
+    .input(z.object({ key: emailKeyEnum }))
+    .mutation(async ({ ctx, input }) => {
+      const res = await sendTemplateEmail({
+        key: input.key,
+        to: { email: ctx.session.user.email, name: ctx.session.user.name },
+        vars: sampleVars(),
+        force: true,
+      });
+      if (!res.sent) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            res.reason === "email-unconfigured"
+              ? "Email is not configured. Set RESEND_API_KEY."
+              : `Test email failed: ${res.reason ?? "unknown error"}`,
+        });
+      }
+      return { to: ctx.session.user.email };
+    }),
+
   updateCertificateTemplate: adminProcedure
     .input(
       z.object({
@@ -275,6 +375,7 @@ export const settingsRouter = createTRPCRouter({
         password: input.password,
         role: "ADMIN",
       });
+      await notifyAccountCreated({ ...admin, role: "ADMIN" });
 
       await logAction({
         actorId: ctx.session.user.id,

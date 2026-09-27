@@ -2,8 +2,14 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { generateTicketId } from "@/lib/ids";
-import { notifyStudent } from "@/lib/notify";
+import { notifyAdmins, notifyStudent } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { appUrl } from "@/lib/qr";
+
+function categoryLabel(c: string) {
+  return c.charAt(0) + c.slice(1).toLowerCase();
+}
+
 import { adminProcedure, createTRPCRouter, studentProcedure } from "../init";
 
 const CATEGORIES = [
@@ -118,7 +124,12 @@ export const supportRouter = createTRPCRouter({
       await notifyStudent({
         studentId: ticket.studentId,
         templateKey: "SUPPORT",
-        vars: { subject: ticket.subject, ticketId: ticket.ticketId },
+        vars: {
+          subject: ticket.subject,
+          ticketId: ticket.ticketId,
+          message: input.body,
+          ticketUrl: appUrl(`/student/support/${ticket.id}`),
+        },
       });
 
       await logAction({
@@ -266,6 +277,26 @@ export const supportRouter = createTRPCRouter({
               attachmentUrl: input.attachmentUrl ?? null,
             },
           },
+        },
+      });
+
+      const vars = {
+        ticketId: ticket.ticketId,
+        subject: ticket.subject,
+        category: categoryLabel(ticket.category),
+      };
+      await notifyStudent({
+        studentId: ctx.session.user.id,
+        templateKey: "TICKET_RECEIVED",
+        vars: { ...vars, ticketUrl: appUrl(`/student/support/${ticket.id}`) },
+      });
+      await notifyAdmins({
+        key: "ADMIN_NEW_TICKET",
+        vars: {
+          ...vars,
+          studentName: ctx.session.user.name,
+          message: input.message,
+          ticketUrl: appUrl(`/admin/support/${ticket.id}`),
         },
       });
       return { id: ticket.id };

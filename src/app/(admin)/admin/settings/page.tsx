@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { ChangePasswordForm } from "@/app/(student)/student/settings/change-password-form";
 import { PageHeader } from "@/components/page-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireAdmin } from "@/lib/dal";
 import { isR2Configured } from "@/lib/r2";
 import { api } from "@/trpc/server";
+import { AdminAlertsForm } from "./admin-alerts-form";
 import { AdminsPanel } from "./admins-panel";
 import { AuditLog } from "./audit-log";
 import { CertificateTemplateForm } from "./certificate-template-form";
@@ -59,7 +62,27 @@ export default async function SettingsPage() {
         </TabsList>
 
         <TabsContent value="account">
-          <MyProfileForm profile={me} r2Configured={r2Configured} />
+          <div className="space-y-6">
+            <MyProfileForm profile={me} r2Configured={r2Configured} />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className="p-6">
+                <CardHeader className="p-0">
+                  <CardTitle>Change password</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 pt-4">
+                  <ChangePasswordForm />
+                </CardContent>
+              </Card>
+              <Card className="p-6">
+                <CardHeader className="p-0">
+                  <CardTitle>Notifications</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 pt-4">
+                  <AdminAlertsForm emailNotifications={me.emailNotifications} />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="profile" className="space-y-6">

@@ -79,39 +79,8 @@ async function main() {
     create: { id: "singleton", signatureName: "School Director" },
   });
 
-  const templates: {
-    key: "ENROLLMENT" | "INVOICE" | "CERTIFICATE" | "SUPPORT";
-    subject: string;
-    body: string;
-  }[] = [
-    {
-      key: "ENROLLMENT",
-      subject: "Welcome to {{courseName}} at Buraq Horse Riding School",
-      body: "Hi {{studentName}},\n\nYou have been enrolled in {{courseName}}. We look forward to riding with you!\n\n— Buraq Horse Riding School",
-    },
-    {
-      key: "INVOICE",
-      subject: "Invoice {{invoiceNumber}} — Buraq Horse Riding School",
-      body: "Hi {{studentName}},\n\nPlease find attached invoice {{invoiceNumber}} for {{amount}}, due {{dueDate}}.\n\nThank you.",
-    },
-    {
-      key: "CERTIFICATE",
-      subject: "Your certificate for {{courseName}} is ready",
-      body: "Hi {{studentName}},\n\nCongratulations on completing {{courseName}}! Your certificate ({{certificateId}}) is attached.",
-    },
-    {
-      key: "SUPPORT",
-      subject: "Re: {{subject}} [{{ticketId}}]",
-      body: "Hi {{studentName}},\n\nThere is an update on your support ticket {{ticketId}}.",
-    },
-  ];
-  for (const t of templates) {
-    await prisma.emailTemplate.upsert({
-      where: { key: t.key },
-      update: {},
-      create: t,
-    });
-  }
+  // Email templates need no seeding: defaults live in src/lib/mail/templates.ts
+  // and admins can override them in Settings → Email Templates.
 
   // ── Users ─────────────────────────────────────────────────────────────────
   const admin = await createUser({

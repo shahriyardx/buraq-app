@@ -1,19 +1,28 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
-import { isEmailConfigured, renderTemplate, sendEmail } from "@/lib/email";
-import {
-  DEFAULT_CURRENCY,
-  formatCurrency,
-  formatCurrencyCode,
-  formatDate,
-} from "@/lib/format";
+import { isEmailConfigured } from "@/lib/email";
+import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/format";
 import { generateInvoiceNumber } from "@/lib/ids";
-import { schoolLogoDataUrl } from "@/lib/pdf/assets";
-import { type InvoiceData, renderInvoicePdf } from "@/lib/pdf/invoice";
+import {
+  buildInvoiceData,
+  emailInvoice,
+  paymentMethodLabel,
+} from "@/lib/invoices";
+import { notifyAdmins, notifyUser } from "@/lib/notify";
+import { renderInvoicePdf } from "@/lib/pdf/invoice";
 import { prisma } from "@/lib/prisma";
+import { appUrl } from "@/lib/qr";
 import { isR2Configured, uploadBufferToR2 } from "@/lib/r2";
 import { adminProcedure, createTRPCRouter, studentProcedure } from "../init";
+
+async function currencyCode() {
+  const s = await prisma.schoolSettings.findUnique({
+    where: { id: "singleton" },
+    select: { currency: true },
+  });
+  return s?.currency ?? DEFAULT_CURRENCY;
+}
 
 /** Flags any past-due UNPAID invoices as OVERDUE. Safe to call on page load. */
 async function markOverdue(studentId?: string) {
@@ -27,62 +36,6 @@ async function markOverdue(studentId?: string) {
   });
 }
 
-/** Builds the InvoiceData payload used by the PDF renderer. */
-async function buildInvoiceData(invoiceId: string): Promise<{
-  data: InvoiceData;
-  studentEmail: string;
-  studentName: string;
-  invoiceNumber: string;
-  dueDate: Date;
-  net: number;
-  currency: string;
-} | null> {
-  const [invoice, settings] = await Promise.all([
-    prisma.invoice.findUnique({
-      where: { id: invoiceId },
-      include: { student: true, course: true },
-    }),
-    prisma.schoolSettings.findUnique({ where: { id: "singleton" } }),
-  ]);
-  if (!invoice) return null;
-
-  const amount = Number(invoice.amount);
-  const discount = Number(invoice.discount);
-  const net = amount - discount;
-  const currency = settings?.currency ?? DEFAULT_CURRENCY;
-
-  const data: InvoiceData = {
-    schoolName: settings?.name ?? "Buraq Horse Riding School",
-    schoolAddress: settings?.address ?? null,
-    schoolEmail: settings?.email ?? null,
-    schoolPhone: settings?.phone ?? null,
-    invoiceNumber: invoice.invoiceNumber,
-    status: invoice.status,
-    studentName: invoice.student.name,
-    studentEmail: invoice.student.email,
-    courseName: invoice.course?.name ?? null,
-    amount: formatCurrencyCode(amount, currency),
-    discount: formatCurrencyCode(discount, currency),
-    total: formatCurrencyCode(net, currency),
-    dueDate: formatDate(invoice.dueDate),
-    issuedDate: formatDate(invoice.createdAt),
-    paidDate: invoice.paidDate ? formatDate(invoice.paidDate) : null,
-    paymentMethod: invoice.paymentMethod,
-    reference: invoice.reference,
-    logoSrc: await schoolLogoDataUrl(settings?.logoUrl),
-  };
-
-  return {
-    data,
-    studentEmail: invoice.student.email,
-    studentName: invoice.student.name,
-    invoiceNumber: invoice.invoiceNumber,
-    dueDate: invoice.dueDate,
-    net,
-    currency,
-  };
-}
-
 /**
  * Activates the enrollment tied to a paid invoice — the student's booking
  * window (weeks) starts from payment approval. Only promotes PENDING/CANCELLED
@@ -91,19 +44,28 @@ async function buildInvoiceData(invoiceId: string): Promise<{
 async function activatePaidEnrollment(
   studentId: string,
   courseId: string | null,
-) {
-  if (!courseId) return;
+): Promise<string | null> {
+  if (!courseId) return null;
   const enrollment = await prisma.enrollment.findUnique({
     where: { studentId_courseId: { studentId, courseId } },
+    include: { course: { select: { name: true } } },
   });
-  if (!enrollment) return;
+  if (!enrollment) return null;
   if (enrollment.status === "PENDING" || enrollment.status === "CANCELLED") {
     const now = new Date();
     await prisma.enrollment.update({
       where: { id: enrollment.id },
       data: { status: "ACTIVE", startDate: now, approvedAt: now },
     });
+    return enrollment.course.name;
   }
+  return null;
+}
+
+function enrollmentNote(courseName: string | null) {
+  return courseName
+    ? `Your enrollment in ${courseName} is now active, and you can start booking your riding sessions.`
+    : null;
 }
 
 export const invoicesRouter = createTRPCRouter({
@@ -211,6 +173,8 @@ export const invoicesRouter = createTRPCRouter({
         detail: invoice.invoiceNumber,
       });
 
+      await emailInvoice(invoice.id, "INVOICE");
+
       return { invoiceNumber: invoice.invoiceNumber };
     }),
 
@@ -233,7 +197,13 @@ export const invoicesRouter = createTRPCRouter({
           status: "PAID",
         },
       });
-      await activatePaidEnrollment(invoice.studentId, invoice.courseId);
+      const activated = await activatePaidEnrollment(
+        invoice.studentId,
+        invoice.courseId,
+      );
+      await emailInvoice(invoice.id, "PAYMENT_CONFIRMED", {
+        enrollmentNote: enrollmentNote(activated),
+      });
 
       await logAction({
         actorId: ctx.session.user.id,
@@ -266,7 +236,13 @@ export const invoicesRouter = createTRPCRouter({
         // Keep whatever method the student chose (ONLINE / CASH).
         data: { status: "PAID", paidDate: new Date() },
       });
-      await activatePaidEnrollment(invoice.studentId, invoice.courseId);
+      const activated = await activatePaidEnrollment(
+        invoice.studentId,
+        invoice.courseId,
+      );
+      await emailInvoice(invoice.id, "PAYMENT_CONFIRMED", {
+        enrollmentNote: enrollmentNote(activated),
+      });
 
       await logAction({
         actorId: ctx.session.user.id,
@@ -297,6 +273,21 @@ export const invoicesRouter = createTRPCRouter({
         where: { id: input.id },
         data: { status: "UNPAID", transactionId: null },
       });
+      await notifyUser({
+        userId: invoice.studentId,
+        key: "PAYMENT_REJECTED",
+        vars: {
+          invoiceNumber: invoice.invoiceNumber,
+          amount: formatCurrency(
+            Number(invoice.amount) - Number(invoice.discount),
+            await currencyCode(),
+          ),
+          reason:
+            input.reason?.trim() ||
+            "We could not match the payment to our records.",
+          invoiceUrl: appUrl(`/student/invoices/${invoice.id}`),
+        },
+      });
       await logAction({
         actorId: ctx.session.user.id,
         actorName: ctx.session.user.name,
@@ -319,37 +310,21 @@ export const invoicesRouter = createTRPCRouter({
         };
       }
 
-      const built = await buildInvoiceData(input.id);
-      if (!built) throw new TRPCError({ code: "NOT_FOUND" });
-
-      const template = await prisma.emailTemplate.findUnique({
-        where: { key: "INVOICE" },
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: input.id },
+        select: {
+          invoiceNumber: true,
+          status: true,
+          student: { select: { email: true } },
+        },
       });
+      if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const vars = {
-        studentName: built.studentName,
-        invoiceNumber: built.invoiceNumber,
-        amount: formatCurrency(built.net, built.currency),
-        dueDate: formatDate(built.dueDate),
-      };
-
-      const subject = template
-        ? renderTemplate(template.subject, vars)
-        : `Invoice ${built.invoiceNumber}`;
-      const text = template
-        ? renderTemplate(template.body, vars)
-        : `Dear ${built.studentName},\n\nPlease find attached invoice ${built.invoiceNumber} for ${vars.amount}, due ${vars.dueDate}.\n\nThank you.`;
-
-      const pdfBuffer = await renderInvoicePdf(built.data);
-
-      const result = await sendEmail({
-        to: built.studentEmail,
-        subject,
-        text,
-        attachments: [
-          { filename: `${built.invoiceNumber}.pdf`, content: pdfBuffer },
-        ],
-      });
+      // A paid invoice goes out as a receipt; anything else as the invoice.
+      const result = await emailInvoice(
+        input.id,
+        invoice.status === "PAID" ? "PAYMENT_CONFIRMED" : "INVOICE",
+      );
 
       await logAction({
         actorId: ctx.session.user.id,
@@ -357,16 +332,19 @@ export const invoicesRouter = createTRPCRouter({
         action: "invoice.email",
         entity: "Invoice",
         entityId: input.id,
-        detail: `${built.invoiceNumber} → ${built.studentEmail}${result.sent ? "" : " (failed)"}`,
+        detail: `${invoice.invoiceNumber} → ${invoice.student.email}${result.sent ? "" : " (failed)"}`,
       });
 
       if (!result.sent) {
         return {
           ok: false,
-          message: result.error ?? "Failed to send invoice email.",
+          message: result.reason ?? "Failed to send invoice email.",
         };
       }
-      return { ok: true, message: `Invoice emailed to ${built.studentEmail}.` };
+      return {
+        ok: true,
+        message: `Invoice emailed to ${invoice.student.email}.`,
+      };
     }),
 
   generatePdf: adminProcedure
@@ -503,7 +481,13 @@ export const invoicesRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const invoice = await prisma.invoice.findFirst({
         where: { id: input.id, studentId: ctx.session.user.id },
-        select: { id: true, status: true },
+        select: {
+          id: true,
+          status: true,
+          invoiceNumber: true,
+          amount: true,
+          discount: true,
+        },
       });
       if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
       if (invoice.status !== "UNPAID" && invoice.status !== "OVERDUE") {
@@ -522,6 +506,32 @@ export const invoicesRouter = createTRPCRouter({
             input.method === "CASH" ? null : (input.transactionId ?? null),
           paymentMethod: input.method,
           status: "PROCESSING",
+        },
+      });
+
+      const vars = {
+        invoiceNumber: invoice.invoiceNumber,
+        amount: formatCurrency(
+          Number(invoice.amount) - Number(invoice.discount),
+          await currencyCode(),
+        ),
+        method: paymentMethodLabel(input.method),
+        transactionId: input.method === "CASH" ? null : input.transactionId,
+      };
+      await notifyUser({
+        userId: ctx.session.user.id,
+        key: "PAYMENT_RECEIVED",
+        vars: {
+          ...vars,
+          invoiceUrl: appUrl(`/student/invoices/${invoice.id}`),
+        },
+      });
+      await notifyAdmins({
+        key: "ADMIN_PAYMENT_SUBMITTED",
+        vars: {
+          ...vars,
+          studentName: ctx.session.user.name,
+          reviewUrl: appUrl("/admin/invoices"),
         },
       });
       return { ok: true };

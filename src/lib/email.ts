@@ -24,12 +24,23 @@ export function renderTemplate(
   });
 }
 
-type Attachment = { filename: string; content: Buffer };
+type Attachment = {
+  filename: string;
+  content: Buffer;
+  /** Set to embed the file inline, referenced in HTML as `cid:<contentId>`. */
+  contentId?: string;
+};
+
+// Dev/staging safety net: when set, every email goes to this address instead
+// of the real recipient. Never set this in production.
+const redirectTo = process.env.EMAIL_REDIRECT_TO?.trim() || null;
 
 export async function sendEmail(input: {
   to: string;
   subject: string;
   text: string;
+  html?: string;
+  replyTo?: string | null;
   attachments?: Attachment[];
 }): Promise<{ sent: boolean; error?: string }> {
   if (!isEmailConfigured()) {
@@ -38,17 +49,28 @@ export async function sendEmail(input: {
     );
     return { sent: false, error: "Email is not configured" };
   }
+  const to = redirectTo ?? input.to;
+  const subject = redirectTo
+    ? `[to: ${input.to}] ${input.subject}`
+    : input.subject;
   try {
-    await getResend().emails.send({
+    const { error } = await getResend().emails.send({
       from,
-      to: input.to,
-      subject: input.subject,
+      to,
+      subject,
       text: input.text,
+      ...(input.html ? { html: input.html } : {}),
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       attachments: input.attachments?.map((a) => ({
         filename: a.filename,
         content: a.content,
+        ...(a.contentId ? { contentId: a.contentId } : {}),
       })),
     });
+    if (error) {
+      console.error("[email] send failed", error);
+      return { sent: false, error: error.message };
+    }
     return { sent: true };
   } catch (err) {
     console.error("[email] send failed", err);

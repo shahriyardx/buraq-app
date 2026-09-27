@@ -65,7 +65,7 @@ jobs:
             echo "::warning::COOLIFY_TOKEN secret not set; skipping deploy."
             exit 0
           fi
-          response=$(curl --fail-with-body -sS --max-time 60 \
+          response=$(curl --fail-with-body -sS --max-time 60 -X POST \
             -H "Authorization: Bearer $COOLIFY_TOKEN" \
             "$COOLIFY_DEPLOY_URL")
           echo "Coolify: $response"

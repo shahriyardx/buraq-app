@@ -1,5 +1,6 @@
 import {
   Document,
+  Image,
   Page,
   renderToBuffer,
   StyleSheet,
@@ -26,6 +27,8 @@ export type InvoiceData = {
   paidDate?: string | null;
   paymentMethod?: string | null;
   reference?: string | null;
+  /** Logo as a data URL (PNG/JPEG). */
+  logoSrc?: string | null;
 };
 
 const s = StyleSheet.create({
@@ -41,14 +44,20 @@ const s = StyleSheet.create({
     alignItems: "flex-start",
     paddingBottom: 16,
     borderBottomWidth: 2,
-    borderBottomColor: pdfColors.navy,
+    borderBottomColor: pdfColors.primary,
   },
-  school: { fontSize: 16, fontFamily: "Helvetica-Bold", color: pdfColors.navy },
+  brand: { flexDirection: "row", alignItems: "center" },
+  logo: { width: 48, height: 48, marginRight: 12, objectFit: "contain" },
+  school: {
+    fontSize: 16,
+    fontFamily: "Helvetica-Bold",
+    color: pdfColors.primary,
+  },
   schoolMeta: { fontSize: 9, color: pdfColors.muted, marginTop: 2 },
   invoiceTitle: {
     fontSize: 22,
     fontFamily: "Helvetica-Bold",
-    color: pdfColors.gold,
+    color: pdfColors.accent,
     textTransform: "uppercase",
     letterSpacing: 1,
   },
@@ -70,7 +79,7 @@ const s = StyleSheet.create({
   table: { marginTop: 28, borderWidth: 1, borderColor: pdfColors.border },
   tHead: {
     flexDirection: "row",
-    backgroundColor: pdfColors.navy,
+    backgroundColor: pdfColors.primary,
     color: "#fff",
     paddingVertical: 6,
     paddingHorizontal: 8,
@@ -98,12 +107,12 @@ const s = StyleSheet.create({
     marginTop: 6,
     backgroundColor: pdfColors.bgSoft,
     borderTopWidth: 2,
-    borderTopColor: pdfColors.gold,
+    borderTopColor: pdfColors.accent,
   },
   grandText: {
     fontSize: 13,
     fontFamily: "Helvetica-Bold",
-    color: pdfColors.navy,
+    color: pdfColors.primary,
   },
   footer: {
     position: "absolute",
@@ -120,7 +129,7 @@ const s = StyleSheet.create({
   statusPill: {
     fontSize: 9,
     fontFamily: "Helvetica-Bold",
-    color: pdfColors.navy,
+    color: pdfColors.primary,
     marginTop: 6,
     textAlign: "right",
   },
@@ -128,20 +137,27 @@ const s = StyleSheet.create({
 
 function InvoiceDoc(d: InvoiceData) {
   return (
-    <Document>
+    <Document
+      title={`Invoice ${d.invoiceNumber}`}
+      author={d.schoolName}
+      subject={`Invoice for ${d.studentName}`}
+    >
       <Page size="A4" style={s.page}>
         <View style={s.header}>
-          <View>
-            <Text style={s.school}>{d.schoolName}</Text>
-            {d.schoolAddress ? (
-              <Text style={s.schoolMeta}>{d.schoolAddress}</Text>
-            ) : null}
-            {d.schoolEmail ? (
-              <Text style={s.schoolMeta}>{d.schoolEmail}</Text>
-            ) : null}
-            {d.schoolPhone ? (
-              <Text style={s.schoolMeta}>{d.schoolPhone}</Text>
-            ) : null}
+          <View style={s.brand}>
+            {d.logoSrc && <Image style={s.logo} src={d.logoSrc} />}
+            <View>
+              <Text style={s.school}>{d.schoolName}</Text>
+              {d.schoolAddress ? (
+                <Text style={s.schoolMeta}>{d.schoolAddress}</Text>
+              ) : null}
+              {d.schoolEmail ? (
+                <Text style={s.schoolMeta}>{d.schoolEmail}</Text>
+              ) : null}
+              {d.schoolPhone ? (
+                <Text style={s.schoolMeta}>{d.schoolPhone}</Text>
+              ) : null}
+            </View>
           </View>
           <View>
             <Text style={s.invoiceTitle}>Invoice</Text>

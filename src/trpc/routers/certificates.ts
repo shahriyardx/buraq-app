@@ -4,6 +4,7 @@ import { logAction } from "@/lib/audit";
 import { formatDate } from "@/lib/format";
 import { generateCertificateId } from "@/lib/ids";
 import { notifyStudent } from "@/lib/notify";
+import { remoteImageDataUrl, schoolLogoDataUrl } from "@/lib/pdf/assets";
 import { renderCertificatePdf } from "@/lib/pdf/certificate";
 import { prisma } from "@/lib/prisma";
 import { appUrl, qrDataUrl } from "@/lib/qr";
@@ -103,6 +104,15 @@ export const certificatesRouter = createTRPCRouter({
         prisma.certificateTemplate.findUnique({ where: { id: "singleton" } }),
       ]);
 
+      // Uploaded template assets win; the logo falls back to the bundled one.
+      const [uploadedLogo, signatureSrc, designSrc] = await Promise.all([
+        remoteImageDataUrl(template?.logoUrl),
+        remoteImageDataUrl(template?.signatureUrl),
+        remoteImageDataUrl(template?.designUrl),
+      ]);
+      const logoSrc =
+        uploadedLogo ?? (await schoolLogoDataUrl(settings?.logoUrl));
+
       const buf = await renderCertificatePdf({
         schoolName: settings?.name ?? "Buraq Horse Riding School",
         studentName: student.name,
@@ -113,6 +123,9 @@ export const certificatesRouter = createTRPCRouter({
         qrDataUrl: qr,
         signatureName: template?.signatureName,
         verifyUrl,
+        logoSrc,
+        signatureSrc,
+        designSrc,
       });
 
       let pdfUrl: string | null = null;

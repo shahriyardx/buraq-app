@@ -26,6 +26,23 @@ function currencyFmt(code: string) {
   return fmt;
 }
 
+const pdfAmountFmt = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * "BDT 12,000.00" — for PDFs. The built-in PDF fonts have no glyph for
+ * symbols like ৳, so PDFs show the ISO code instead of the symbol.
+ */
+export function formatCurrencyCode(
+  value: number | string | { toString(): string },
+  code: string = DEFAULT_CURRENCY,
+) {
+  const n = typeof value === "number" ? value : Number(value.toString());
+  return `${code} ${pdfAmountFmt.format(Number.isFinite(n) ? n : 0)}`;
+}
+
 export function formatCurrency(
   value: number | string | { toString(): string },
   code: string = DEFAULT_CURRENCY,

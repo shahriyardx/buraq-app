@@ -4,6 +4,7 @@ import { z } from "zod";
 import { toAttendanceDate } from "@/app/(admin)/admin/attendance/date";
 import { logAction } from "@/lib/audit";
 import { formatDate } from "@/lib/format";
+import { schoolLogoDataUrl } from "@/lib/pdf/assets";
 import type { AttendanceReportData } from "@/lib/pdf/attendance-report";
 import { prisma } from "@/lib/prisma";
 import { adminProcedure, createTRPCRouter, studentProcedure } from "../init";
@@ -27,7 +28,7 @@ async function buildReportData(
     }),
     prisma.schoolSettings.findUnique({
       where: { id: "singleton" },
-      select: { name: true },
+      select: { name: true, logoUrl: true },
     }),
   ]);
 
@@ -54,6 +55,7 @@ async function buildReportData(
       course: r.course.name,
       status: r.status,
     })),
+    logoSrc: await schoolLogoDataUrl(settings?.logoUrl),
   };
 }
 

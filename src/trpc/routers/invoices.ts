@@ -2,8 +2,14 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { isEmailConfigured, renderTemplate, sendEmail } from "@/lib/email";
-import { DEFAULT_CURRENCY, formatCurrency, formatDate } from "@/lib/format";
+import {
+  DEFAULT_CURRENCY,
+  formatCurrency,
+  formatCurrencyCode,
+  formatDate,
+} from "@/lib/format";
 import { generateInvoiceNumber } from "@/lib/ids";
+import { schoolLogoDataUrl } from "@/lib/pdf/assets";
 import { type InvoiceData, renderInvoicePdf } from "@/lib/pdf/invoice";
 import { prisma } from "@/lib/prisma";
 import { isR2Configured, uploadBufferToR2 } from "@/lib/r2";
@@ -55,14 +61,15 @@ async function buildInvoiceData(invoiceId: string): Promise<{
     studentName: invoice.student.name,
     studentEmail: invoice.student.email,
     courseName: invoice.course?.name ?? null,
-    amount: formatCurrency(amount, currency),
-    discount: formatCurrency(discount, currency),
-    total: formatCurrency(net, currency),
+    amount: formatCurrencyCode(amount, currency),
+    discount: formatCurrencyCode(discount, currency),
+    total: formatCurrencyCode(net, currency),
     dueDate: formatDate(invoice.dueDate),
     issuedDate: formatDate(invoice.createdAt),
     paidDate: invoice.paidDate ? formatDate(invoice.paidDate) : null,
     paymentMethod: invoice.paymentMethod,
     reference: invoice.reference,
+    logoSrc: await schoolLogoDataUrl(settings?.logoUrl),
   };
 
   return {

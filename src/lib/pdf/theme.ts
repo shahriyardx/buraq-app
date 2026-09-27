@@ -1,10 +1,11 @@
+// Brand palette, taken from the school logo (olive shield + brass trim).
 export const pdfColors = {
-  navy: "#26304f",
-  navyDark: "#1b2238",
-  gold: "#c9a227",
-  goldSoft: "#e8d38a",
-  text: "#1f2530",
-  muted: "#6b7280",
-  border: "#d8dce4",
-  bgSoft: "#f5f6f9",
+  primary: "#5c6a3b",
+  primaryDark: "#3f4a26",
+  accent: "#b08a3e",
+  accentSoft: "#d9c28f",
+  text: "#23261d",
+  muted: "#6d6f63",
+  border: "#dcdccf",
+  bgSoft: "#f6f4ec",
 };

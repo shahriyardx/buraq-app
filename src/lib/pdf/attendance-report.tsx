@@ -1,5 +1,6 @@
 import {
   Document,
+  Image,
   Page,
   renderToBuffer,
   StyleSheet,
@@ -22,6 +23,8 @@ export type AttendanceReportData = {
     rate: number;
   };
   rows: { date: string; course: string; status: string }[];
+  /** Logo as a data URL (PNG/JPEG). */
+  logoSrc?: string | null;
 };
 
 const s = StyleSheet.create({
@@ -31,16 +34,23 @@ const s = StyleSheet.create({
     color: pdfColors.text,
     fontFamily: "Helvetica",
   },
+  logo: { width: 44, height: 44, marginRight: 12, objectFit: "contain" },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingBottom: 12,
     borderBottomWidth: 2,
-    borderBottomColor: pdfColors.navy,
+    borderBottomColor: pdfColors.primary,
   },
-  school: { fontSize: 15, fontFamily: "Helvetica-Bold", color: pdfColors.navy },
+  school: {
+    fontSize: 15,
+    fontFamily: "Helvetica-Bold",
+    color: pdfColors.primary,
+  },
   title: {
     fontSize: 12,
     marginTop: 4,
-    color: pdfColors.gold,
+    color: pdfColors.accent,
     fontFamily: "Helvetica-Bold",
   },
   meta: { fontSize: 9, color: pdfColors.muted, marginTop: 2 },
@@ -55,19 +65,19 @@ const s = StyleSheet.create({
   cardVal: {
     fontSize: 16,
     fontFamily: "Helvetica-Bold",
-    color: pdfColors.navy,
+    color: pdfColors.primary,
   },
   cardLbl: { fontSize: 8, color: pdfColors.muted, textTransform: "uppercase" },
   rate: {
     marginTop: 14,
     fontSize: 12,
     fontFamily: "Helvetica-Bold",
-    color: pdfColors.navy,
+    color: pdfColors.primary,
   },
   table: { marginTop: 16, borderWidth: 1, borderColor: pdfColors.border },
   tHead: {
     flexDirection: "row",
-    backgroundColor: pdfColors.navy,
+    backgroundColor: pdfColors.primary,
     color: "#fff",
     paddingVertical: 5,
     paddingHorizontal: 8,
@@ -95,16 +105,22 @@ function Card({ label, value }: { label: string; value: number | string }) {
 
 function AttendanceDoc(d: AttendanceReportData) {
   return (
-    <Document>
+    <Document
+      title={`Attendance Report — ${d.studentName}`}
+      author={d.schoolName}
+    >
       <Page size="A4" style={s.page}>
         <View style={s.header}>
-          <Text style={s.school}>{d.schoolName}</Text>
-          <Text style={s.title}>Attendance Report</Text>
-          <Text style={s.meta}>
-            {d.studentName}
-            {d.studentId ? ` · ${d.studentId}` : ""} · Generated{" "}
-            {d.generatedDate}
-          </Text>
+          {d.logoSrc && <Image style={s.logo} src={d.logoSrc} />}
+          <View>
+            <Text style={s.school}>{d.schoolName}</Text>
+            <Text style={s.title}>Attendance Report</Text>
+            <Text style={s.meta}>
+              {d.studentName}
+              {d.studentId ? ` · ${d.studentId}` : ""} · Generated{" "}
+              {d.generatedDate}
+            </Text>
+          </View>
         </View>
 
         <View style={s.cards}>

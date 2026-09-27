@@ -103,7 +103,7 @@ function Brand() {
   return (
     <div className="flex items-center gap-3 px-6 py-5">
       <Image
-        src="/logo.png"
+        src="/brand/buraq-logo.png"
         alt="Buraq Horse Riding School"
         width={40}
         height={40}

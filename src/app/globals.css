@@ -142,16 +142,6 @@
   }
 }
 
-@keyframes buraq-float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-8deg);
-  }
-  50% {
-    transform: translateY(-8px) rotate(-8deg);
-  }
-}
-
 @keyframes buraq-drift {
   from {
     transform: translateX(0);
@@ -164,9 +154,6 @@
 .buraq-rise {
   opacity: 0;
   animation: buraq-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-.buraq-float {
-  animation: buraq-float 6s ease-in-out infinite;
 }
 
 /* Fine paper grain for the parchment panel + scene depth */

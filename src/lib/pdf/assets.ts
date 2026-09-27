@@ -20,10 +20,12 @@ async function toPdfDataUrl(input: Buffer): Promise<string> {
   return `data:image/png;base64,${png.toString("base64")}`;
 }
 
-/** The bundled school logo (public/logo.png) as a data URL. */
+/** The bundled school logo (public/brand/buraq-logo.png) as a data URL. */
 export async function defaultLogoDataUrl(): Promise<string | null> {
   try {
-    const buf = await readFile(path.join(process.cwd(), "public", "logo.png"));
+    const buf = await readFile(
+      path.join(process.cwd(), "public", "brand", "buraq-logo.png"),
+    );
     return await toPdfDataUrl(buf);
   } catch {
     return null;

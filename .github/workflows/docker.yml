@@ -52,3 +52,19 @@ jobs:
           # the GitHub Actions cache took minutes; ghcr takes seconds.
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+
+      # Runs only after the new image is pushed, so Coolify pulls the fresh
+      # `latest`. Skips (with a warning) until both secrets are set.
+      - name: Deploy on Coolify
+        if: github.ref == 'refs/heads/master'
+        env:
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$COOLIFY_WEBHOOK" ] || [ -z "$COOLIFY_TOKEN" ]; then
+            echo "::warning::COOLIFY_WEBHOOK / COOLIFY_TOKEN secrets not set; skipping deploy."
+            exit 0
+          fi
+          curl --fail-with-body -sS --max-time 60 \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_WEBHOOK"

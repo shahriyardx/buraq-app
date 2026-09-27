@@ -9,7 +9,17 @@ export const metadata: Metadata = { title: "Certificate Verification" };
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12 text-foreground">
-      <div className="w-full max-w-lg">{children}</div>
+      <div className="w-full max-w-lg">
+        {children}
+        <p className="mt-6 text-center text-sm">
+          <Link
+            href="/verify"
+            className="font-medium text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Check another certificate
+          </Link>
+        </p>
+      </div>
     </main>
   );
 }
@@ -32,7 +42,8 @@ function DetailRow({
 export default async function VerifyCertificatePage({
   params,
 }: PageProps<"/verify/[certificateId]">) {
-  const { certificateId } = await params;
+  const { certificateId: raw } = await params;
+  const certificateId = decodeURIComponent(raw).trim().toUpperCase();
 
   const result = await api.certificates.verify({ certificateId });
   const schoolName = result.schoolName;

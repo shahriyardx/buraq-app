@@ -10,7 +10,7 @@ const fraunces = Fraunces({
 
 /** Shared equestrian auth scene + centered parchment card. */
 export function AuthShell({
-  eyebrow = "Est. 2011",
+  eyebrow = "Est. 2023",
   title,
   subtitle,
   footer = "Ride safe",

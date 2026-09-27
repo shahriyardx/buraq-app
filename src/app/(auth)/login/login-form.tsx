@@ -116,6 +116,12 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
           Create an account
         </Link>
       </p>
+
+      <p className="text-center text-xs text-[#20302a]/60">
+        <Link href="/verify" className="hover:text-[#a5772f] hover:underline">
+          Verify a certificate
+        </Link>
+      </p>
     </form>
   );
 }

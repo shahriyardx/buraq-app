@@ -226,7 +226,7 @@ export function SchoolProfileForm({
             <Input
               id="logo"
               type="file"
-              accept="image/jpeg,image/png"
+              accept="image/jpeg,image/png,image/webp"
               disabled={!r2Configured}
               onChange={(e) => setLogo(e.target.files?.[0] ?? null)}
             />

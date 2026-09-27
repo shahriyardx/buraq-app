@@ -1,18 +1,30 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import sharp from "sharp";
 
-// react-pdf can only embed PNG and JPEG images.
-const PDF_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
+const UPLOAD_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_SIDE = 2000;
 
-function toDataUrl(buf: Buffer, type: string) {
-  return `data:${type};base64,${buf.toString("base64")}`;
+/**
+ * Re-encodes any image as a plain 8-bit RGBA PNG data URL. react-pdf only
+ * embeds PNG/JPEG and draws palette (indexed) PNGs badly — e.g. a signature
+ * turns into a dotted outline — so every image is normalised first.
+ */
+async function toPdfDataUrl(input: Buffer): Promise<string> {
+  const png = await sharp(input)
+    .rotate()
+    .resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true })
+    .ensureAlpha()
+    .png({ palette: false })
+    .toBuffer();
+  return `data:image/png;base64,${png.toString("base64")}`;
 }
 
 /** The bundled school logo (public/logo.png) as a data URL. */
 export async function defaultLogoDataUrl(): Promise<string | null> {
   try {
     const buf = await readFile(path.join(process.cwd(), "public", "logo.png"));
-    return toDataUrl(buf, "image/png");
+    return await toPdfDataUrl(buf);
   } catch {
     return null;
   }
@@ -27,7 +39,7 @@ export async function schoolLogoDataUrl(
 
 /**
  * Fetches an uploaded image (e.g. from R2) as a data URL for a PDF.
- * Returns null when it is missing, unreachable, or not PNG/JPEG, so a bad
+ * Returns null when it is missing, unreachable, or not an image, so a bad
  * asset never breaks PDF generation.
  */
 export async function remoteImageDataUrl(
@@ -38,8 +50,8 @@ export async function remoteImageDataUrl(
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return null;
     const type = res.headers.get("content-type")?.split(";")[0].trim() ?? "";
-    if (!PDF_IMAGE_TYPES.has(type)) return null;
-    return toDataUrl(Buffer.from(await res.arrayBuffer()), type);
+    if (!UPLOAD_IMAGE_TYPES.has(type)) return null;
+    return await toPdfDataUrl(Buffer.from(await res.arrayBuffer()));
   } catch {
     return null;
   }

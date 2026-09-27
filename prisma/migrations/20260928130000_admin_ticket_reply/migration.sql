@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "EmailTemplateKey" ADD VALUE IF NOT EXISTS 'ADMIN_TICKET_REPLY';

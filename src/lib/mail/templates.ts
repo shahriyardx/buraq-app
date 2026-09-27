@@ -22,7 +22,8 @@ export type EmailTemplateKey =
   | "SUPPORT"
   | "ADMIN_NEW_REGISTRATION"
   | "ADMIN_PAYMENT_SUBMITTED"
-  | "ADMIN_NEW_TICKET";
+  | "ADMIN_NEW_TICKET"
+  | "ADMIN_TICKET_REPLY";
 
 export type EmailAudience = "member" | "admin";
 
@@ -349,6 +350,34 @@ export const EMAIL_TEMPLATES: Record<EmailTemplateKey, EmailTemplateDef> = {
       "ticketId",
       "subject",
       "category",
+      "message",
+      "ticketUrl",
+    ],
+  },
+
+  ADMIN_TICKET_REPLY: {
+    label: "Admin alert: student replied",
+    description:
+      "Sent when a student replies to a support request. Goes to the assigned admin, or to all admins if none is assigned.",
+    audience: "admin",
+    alwaysSend: false,
+    subject: "New reply on [{{ticketId}}]: {{subject}}",
+    heading: "A student replied",
+    body: "{{studentName}} replied to support request {{ticketId}}.\n\n{{reopenedNote}}",
+    cta: { label: "Open request", urlVar: "ticketUrl" },
+    quoteVar: "message",
+    details: [
+      ["Reference", "{{ticketId}}"],
+      ["Subject", "{{subject}}"],
+      ["Status", "{{status}}"],
+    ],
+    vars: [
+      ...COMMON_VARS,
+      "studentName",
+      "ticketId",
+      "subject",
+      "status",
+      "reopenedNote",
       "message",
       "ticketUrl",
     ],

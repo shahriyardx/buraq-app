@@ -96,6 +96,7 @@ enum EmailTemplateKey {
   ADMIN_NEW_REGISTRATION
   ADMIN_PAYMENT_SUBMITTED
   ADMIN_NEW_TICKET
+  ADMIN_TICKET_REPLY
 }
 
 // ─── better-auth core ───────────────────────────────────────────────────────

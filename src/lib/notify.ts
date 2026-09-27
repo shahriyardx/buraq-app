@@ -148,16 +148,34 @@ export function notifyStudent(input: {
   });
 }
 
-/** Sends an admin alert to every active admin who has alerts turned on. */
+/**
+ * Sends an admin alert to every active admin who has alerts turned on. With
+ * `preferAdminId`, only that admin is alerted (if active, with alerts on);
+ * otherwise it falls back to all admins.
+ */
 export async function notifyAdmins(input: {
   key: EmailTemplateKey;
   vars?: Vars;
+  preferAdminId?: string | null;
 }): Promise<void> {
   try {
-    const admins = await prisma.user.findMany({
-      where: { role: "ADMIN", status: "ACTIVE", emailNotifications: true },
-      select: { email: true, name: true },
-    });
+    const where = {
+      role: "ADMIN" as const,
+      status: "ACTIVE" as const,
+      emailNotifications: true,
+    };
+    const preferred = input.preferAdminId
+      ? await prisma.user.findFirst({
+          where: { ...where, id: input.preferAdminId },
+          select: { email: true, name: true },
+        })
+      : null;
+    const admins = preferred
+      ? [preferred]
+      : await prisma.user.findMany({
+          where,
+          select: { email: true, name: true },
+        });
     await Promise.all(
       admins.map((a) =>
         sendTemplateEmail({ key: input.key, to: a, vars: input.vars }),

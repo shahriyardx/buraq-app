@@ -312,7 +312,14 @@ export const supportRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const ticket = await prisma.supportTicket.findUnique({
         where: { id: input.ticketId },
-        select: { id: true, studentId: true, status: true },
+        select: {
+          id: true,
+          ticketId: true,
+          subject: true,
+          studentId: true,
+          status: true,
+          assignedTo: true,
+        },
       });
       // A student may only reply to their own tickets.
       if (!ticket || ticket.studentId !== ctx.session.user.id) {
@@ -335,6 +342,25 @@ export const supportRouter = createTRPCRouter({
           data: { status: "OPEN" },
         });
       }
+
+      const reopened = ticket.status === "RESOLVED";
+      await notifyAdmins({
+        key: "ADMIN_TICKET_REPLY",
+        preferAdminId: ticket.assignedTo,
+        vars: {
+          studentName: ctx.session.user.name,
+          ticketId: ticket.ticketId,
+          subject: ticket.subject,
+          status: reopened
+            ? "Reopened"
+            : categoryLabel(ticket.status).replace("_", " "),
+          reopenedNote: reopened
+            ? "This request was marked resolved, so it has been reopened."
+            : null,
+          message: input.body,
+          ticketUrl: appUrl(`/admin/support/${ticket.id}`),
+        },
+      });
 
       return { ok: true };
     }),

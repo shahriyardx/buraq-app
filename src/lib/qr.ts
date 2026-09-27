@@ -10,10 +10,9 @@ export async function qrDataUrl(text: string): Promise<string> {
 }
 
 export function appUrl(path: string) {
-  const base = (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.BETTER_AUTH_URL ??
-    "http://localhost:3000"
-  ).replace(/\/$/, "");
+  const base = (process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(
+    /\/$/,
+    "",
+  );
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }

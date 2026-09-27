@@ -155,7 +155,7 @@ export function ProfileForm({
           <Input
             id="photo"
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             disabled={!r2Configured}
             onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
           />

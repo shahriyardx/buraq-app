@@ -20,7 +20,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,7 +53,12 @@ const ICONS: Record<string, LucideIcon> = {
   settings: Settings,
 };
 
-type ShellUser = { name: string; email: string; role: string };
+type ShellUser = {
+  name: string;
+  email: string;
+  role: string;
+  photoUrl?: string | null;
+};
 
 function NavLinks({
   items,
@@ -102,7 +107,7 @@ function Brand() {
         alt="Buraq Horse Riding School"
         width={40}
         height={40}
-        className="size-10 rounded-md object-cover"
+        className="size-10 object-contain"
         priority
       />
       <div className="leading-tight">
@@ -170,6 +175,9 @@ export function DashboardShell({
                   className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Avatar className="size-9">
+                    {user.photoUrl && (
+                      <AvatarImage src={user.photoUrl} alt={user.name} />
+                    )}
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                       {initials(user.name)}
                     </AvatarFallback>

@@ -119,7 +119,7 @@ export function CertificateTemplateForm({
             <Input
               id="logo"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               disabled={!r2Configured}
               onChange={(e) => setLogo(e.target.files?.[0] ?? null)}
             />
@@ -130,7 +130,7 @@ export function CertificateTemplateForm({
             <Input
               id="signature"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               disabled={!r2Configured}
               onChange={(e) => setSignature(e.target.files?.[0] ?? null)}
             />
@@ -141,7 +141,7 @@ export function CertificateTemplateForm({
             <Input
               id="design"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               disabled={!r2Configured}
               onChange={(e) => setDesign(e.target.files?.[0] ?? null)}
             />

@@ -11,6 +11,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         name: session.user.name,
         email: session.user.email,
         role: session.user.role as string,
+        photoUrl: session.user.photoUrl ?? null,
       }}
     >
       {children}

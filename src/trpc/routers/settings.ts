@@ -80,6 +80,49 @@ export const settingsRouter = createTRPCRouter({
     };
   }),
 
+  /** The signed-in admin's own account (not the school profile). */
+  myProfile: adminProcedure.query(async ({ ctx }) => {
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.session.user.id },
+      select: { name: true, email: true, phone: true, photoUrl: true },
+    });
+    return {
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      phone: user?.phone ?? null,
+      photoUrl: user?.photoUrl ?? null,
+    };
+  }),
+
+  updateMyProfile: adminProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(2, "Name is required"),
+        phone: z.string().nullish(),
+        photoUrl: z.string().url().nullish(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: {
+          name: input.name,
+          phone: input.phone ?? null,
+          ...(input.photoUrl ? { photoUrl: input.photoUrl } : {}),
+        },
+      });
+
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: input.name,
+        action: "account.update_profile",
+        entity: "User",
+        entityId: ctx.session.user.id,
+      });
+
+      return { ok: true };
+    }),
+
   updateProfile: adminProcedure
     .input(
       z.object({

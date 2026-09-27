@@ -238,7 +238,7 @@ export function RegisterForm({ r2Configured }: { r2Configured: boolean }) {
           <Input
             id="photo"
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             className={inputClass}
             onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
           />

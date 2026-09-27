@@ -175,6 +175,7 @@ export function SubmitTicketDialog() {
               <Input
                 id="attachment"
                 type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
                 onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
               />
             </Field>

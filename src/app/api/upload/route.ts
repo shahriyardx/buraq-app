@@ -11,6 +11,18 @@ const ALLOWED_PREFIXES = new Set([
   "profile",
 ]);
 
+const IMAGE_TYPES: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+// Support tickets may also attach a PDF.
+const TICKET_TYPES: Record<string, string> = {
+  ...IMAGE_TYPES,
+  "application/pdf": ".pdf",
+};
+const MAX_BYTES = 5 * 1024 * 1024;
+
 /**
  * Authenticated file-upload endpoint. tRPC is JSON-only, so binary uploads go
  * here first and the returned URL is passed into the relevant tRPC mutation.
@@ -43,8 +55,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Files are served from a public bucket, so only allow known-safe types
+  // (no HTML/SVG) and store them with an extension derived from the type.
+  const allowed = prefix === "tickets" ? TICKET_TYPES : IMAGE_TYPES;
+  const ext = allowed[file.type];
+  if (!ext) {
+    return NextResponse.json(
+      {
+        error:
+          prefix === "tickets"
+            ? "Only JPG, PNG, WebP or PDF files are allowed."
+            : "Only JPG, PNG or WebP images are allowed.",
+      },
+      { status: 415 },
+    );
+  }
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json(
+      { error: "File is too large (max 5 MB)." },
+      { status: 413 },
+    );
+  }
+
   try {
-    const url = await uploadToR2(file as File, prefix);
+    const url = await uploadToR2(file, prefix, {
+      filename: `upload${ext}`,
+      contentType: file.type,
+    });
     return NextResponse.json({ url });
   } catch (err) {
     return NextResponse.json(

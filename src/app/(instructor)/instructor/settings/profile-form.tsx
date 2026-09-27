@@ -149,7 +149,7 @@ export function ProfileForm({
             <Input
               id="photo"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
             />
           </Field>

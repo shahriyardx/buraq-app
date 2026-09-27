@@ -85,7 +85,7 @@ export function AuthShell({
             alt="Buraq Horse Riding School"
             width={96}
             height={96}
-            className="buraq-float size-24 rounded-xl object-cover shadow-md"
+            className="buraq-float size-24 object-contain drop-shadow-md"
             priority
           />
           <p className="mt-4 text-[11px] uppercase tracking-[0.4em] text-[#a5772f]">

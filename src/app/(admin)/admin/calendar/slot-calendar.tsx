@@ -30,6 +30,8 @@ const MONTHS = [
 ];
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const ASSIGN = "__assign__";
+const SHARED = "__shared__";
+const SEATS = Array.from({ length: 10 }, (_, i) => String(i + 1));
 
 export function SlotCalendar({
   courses,
@@ -38,22 +40,26 @@ export function SlotCalendar({
   initialMonth,
 }: {
   courses: { id: string; name: string }[];
-  initialCourseId: string;
+  initialCourseId?: string;
   initialYear: number;
   initialMonth: number; // 1-12
 }) {
-  const [courseId, setCourseId] = useState(initialCourseId);
+  const [courseId, setCourseId] = useState(initialCourseId ?? SHARED);
+  const selectedCourseId = courseId === SHARED ? null : courseId;
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
   const [selected, setSelected] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
-  const cal = trpc.courses.calendar.useQuery(
-    { courseId, year, month },
-    { enabled: Boolean(courseId) },
-  );
+  const cal = trpc.courses.calendar.useQuery({
+    courseId: selectedCourseId,
+    year,
+    month,
+  });
   const assign = trpc.courses.assignSlot.useMutation();
   const remove = trpc.courses.removeBooking.useMutation();
+  const setLive = trpc.courses.setScheduleLive.useMutation();
+  const setSeats = trpc.courses.setSlotCapacity.useMutation();
 
   const byDate = useMemo(() => {
     type DaySlots = NonNullable<typeof cal.data>["days"][number]["slots"];
@@ -78,18 +84,45 @@ export function SlotCalendar({
   }
 
   async function refresh() {
-    await utils.courses.calendar.invalidate({ courseId, year, month });
+    await utils.courses.calendar.invalidate();
   }
 
   async function doAssign(
     slotId: string,
     date: string,
     startTime: string,
-    studentId: string,
+    enrollmentKey: string, // "studentId|courseId"
   ) {
+    const [studentId, forCourseId] = enrollmentKey.split("|");
     try {
-      await assign.mutateAsync({ slotId, date, startTime, studentId });
+      await assign.mutateAsync({
+        slotId,
+        courseId: forCourseId,
+        date,
+        startTime,
+        studentId,
+      });
       toast.success("Slot assigned.");
+      await refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
+  async function doToggleLive() {
+    if (!selectedCourseId) return;
+    const live = !cal.data?.scheduleLive;
+    try {
+      await setLive.mutateAsync({ id: selectedCourseId, live });
+      toast.success(live ? "Schedule is live." : "Schedule hidden.");
+      await refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
+  async function doSetSeats(slotId: string, capacity: number) {
+    try {
+      await setSeats.mutateAsync({ slotId, capacity });
+      toast.success("Seats updated.");
       await refresh();
     } catch (err) {
       toast.error((err as Error).message);
@@ -129,6 +162,7 @@ export function SlotCalendar({
               <SelectValue placeholder="Select course" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={SHARED}>Shared slots (all courses)</SelectItem>
               {courses.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.name}
@@ -136,6 +170,16 @@ export function SlotCalendar({
               ))}
             </SelectContent>
           </Select>
+          {cal.data && cal.data.scheduleLive !== null && (
+            <Button
+              variant={cal.data.scheduleLive ? "default" : "outline"}
+              size="sm"
+              disabled={setLive.isPending}
+              onClick={doToggleLive}
+            >
+              {cal.data.scheduleLive ? "Live: On" : "Live: Off"}
+            </Button>
+          )}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -215,12 +259,32 @@ export function SlotCalendar({
         <div className="space-y-4">
           {selectedSlots.map((slot) => (
             <div key={slot.slotId} className="rounded-lg border p-3">
-              <p className="mb-2 text-sm font-medium">
-                {slot.windowStart}–{slot.windowEnd}
-                <span className="ml-1 font-normal text-muted-foreground">
-                  · {slot.sessionMinutes}min · {slot.capacity} seats/session
-                </span>
-              </p>
+              <div className="mb-2 flex items-center justify-between gap-2 text-sm">
+                <p className="font-medium">
+                  {slot.windowStart}–{slot.windowEnd}
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    · {slot.sessionMinutes}min
+                    {slot.shared && selectedCourseId ? " · shared" : ""}
+                  </span>
+                </p>
+                {/* Seats per session; applies to this weekday's slot every week. */}
+                <Select
+                  value={String(slot.capacity)}
+                  onValueChange={(v) => doSetSeats(slot.slotId, Number(v))}
+                  disabled={setSeats.isPending}
+                >
+                  <SelectTrigger className="h-7 w-28 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEATS.map((n) => (
+                      <SelectItem key={n} value={n}>
+                        {n} seats
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-3">
                 {slot.sessions.map((ss) => {
                   const remaining = ss.capacity - ss.bookings.length;
@@ -246,7 +310,15 @@ export function SlotCalendar({
                             key={b.bookingId}
                             className="flex items-center justify-between gap-2 text-sm"
                           >
-                            <span>{b.studentName}</span>
+                            <span>
+                              {b.studentName}
+                              {!selectedCourseId && (
+                                <span className="text-xs text-muted-foreground">
+                                  {" "}
+                                  · {b.courseName}
+                                </span>
+                              )}
+                            </span>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -273,7 +345,10 @@ export function SlotCalendar({
                           <SelectContent>
                             <SelectItem value={ASSIGN}>Assign…</SelectItem>
                             {assignable.map((st) => (
-                              <SelectItem key={st.id} value={st.id}>
+                              <SelectItem
+                                key={`${st.id}|${st.courseId}`}
+                                value={`${st.id}|${st.courseId}`}
+                              >
                                 {st.name}
                               </SelectItem>
                             ))}

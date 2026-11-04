@@ -198,6 +198,8 @@ model Course {
   maxStudents  Int?         // deprecated: no enrollment cap (kept for back-compat)
   maxBookingsPerWeek Int    @default(1) // slots a student may book per week
   enrollmentPaused Boolean  @default(false) // block student self-enrollment
+  scheduleLive Boolean      @default(false) // students can book slots only when live
+  privateSchedule Boolean   @default(false) // true = own slots only; false = shared slots + own
   instructor   String?      // legacy/display name; mirrors instructorUser.name when set
   instructorUserId String?
   instructorUser   User?    @relation("CourseInstructor", fields: [instructorUserId], references: [id], onDelete: SetNull)
@@ -211,6 +213,7 @@ model Course {
   invoices     Invoice[]
   sessions     ClassSession[]
   slots        CourseSlot[]
+  slotBookings SlotBooking[]
 
   @@index([status])
   @@index([instructorUserId])
@@ -218,10 +221,11 @@ model Course {
 }
 
 // Recurring weekly training slot template. Students book concrete occurrences.
+// courseId null = shared slot used by every non-private course.
 model CourseSlot {
   id        String   @id @default(cuid())
-  courseId  String
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
   weekday   Int      // 0=Sunday … 6=Saturday
   startTime String   // window start "HH:mm"
   endTime   String   // window end "HH:mm"
@@ -240,6 +244,8 @@ model SlotBooking {
   id        String     @id @default(cuid())
   slotId    String
   slot      CourseSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  courseId  String     // course this booking counts toward (a shared slot has none)
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   studentId String
   student   User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   date      DateTime   @db.Date
@@ -249,6 +255,7 @@ model SlotBooking {
   @@unique([slotId, studentId, date])
   @@index([slotId, date])
   @@index([studentId, date])
+  @@index([studentId, courseId])
   @@map("slot_booking")
 }
 
@@ -280,6 +287,7 @@ model Enrollment {
   endDate   DateTime?
   approvedAt DateTime?       // anchors the weekly booking window
   bonusWeeks Int             @default(0) // admin-granted extra weeks
+  classAdjust Int            @default(0) // +compensation / -already done (migrated students)
   progress  Int              @default(0) // 0-100
   status    EnrollmentStatus @default(ACTIVE)
   createdAt DateTime         @default(now())

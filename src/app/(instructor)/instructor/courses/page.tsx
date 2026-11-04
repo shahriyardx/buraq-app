@@ -5,12 +5,16 @@ import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import { requireInstructor } from "@/lib/dal";
 import { api } from "@/trpc/server";
+import { ScheduleControls } from "./schedule-controls";
 
 export const metadata: Metadata = { title: "My Courses" };
 
 export default async function InstructorCoursesPage() {
   await requireInstructor();
-  const courses = await api.instructor.courses();
+  const [courses, sharedSlots] = await Promise.all([
+    api.instructor.courses(),
+    api.instructor.sharedSlots(),
+  ]);
 
   return (
     <>
@@ -18,6 +22,17 @@ export default async function InstructorCoursesPage() {
         title="My Courses"
         description="Courses you are assigned to teach."
       />
+
+      {sharedSlots.length > 0 && (
+        <Card className="mb-6 p-5">
+          <h3 className="font-heading font-semibold">Shared slots</h3>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Used by every course except private ones. Set seats to the number of
+            horses.
+          </p>
+          <ScheduleControls slots={sharedSlots} />
+        </Card>
+      )}
 
       {courses.length === 0 ? (
         <Card className="p-10 text-center text-sm text-muted-foreground">
@@ -46,6 +61,11 @@ export default async function InstructorCoursesPage() {
                 </span>
                 {c.schedule && <span>{c.schedule}</span>}
               </div>
+              <ScheduleControls
+                courseId={c.id}
+                live={c.scheduleLive}
+                slots={c.slots}
+              />
             </Card>
           ))}
         </div>

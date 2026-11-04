@@ -40,6 +40,7 @@ type CourseBlock = {
   bonusWeeks: number;
   maxBookingsPerWeek: number;
   bookingOpen: boolean;
+  scheduleLive: boolean;
   occurrences: Occurrence[];
   weekUsage: Record<string, number>;
 };
@@ -56,9 +57,14 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
   const cancel = trpc.bookings.cancel.useMutation();
   const busy = book.isPending || cancel.isPending;
 
-  async function onBook(slotId: string, date: string, startTime: string) {
+  async function onBook(
+    courseId: string,
+    slotId: string,
+    date: string,
+    startTime: string,
+  ) {
     try {
-      const res = await book.mutateAsync({ slotId, date, startTime });
+      const res = await book.mutateAsync({ courseId, slotId, date, startTime });
       toast.success(
         res.status === "COMPLETED"
           ? "Booked — course completed! 🎉"
@@ -119,6 +125,10 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                   ? "Your booking window has closed. Ask the office for an extra week."
                   : "Booking is not open."}
             </p>
+          ) : !c.scheduleLive ? (
+            <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+              The schedule is not live yet. Check back soon.
+            </p>
           ) : c.occurrences.length === 0 ? (
             <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
               No upcoming slots in your booking window.
@@ -166,7 +176,9 @@ export function BookingBoard({ courses }: { courses: CourseBlock[] }) {
                               size="sm"
                               className="h-8 px-2 text-xs"
                               disabled={busy || full || weekFull}
-                              onClick={() => onBook(o.slotId, o.date, s.start)}
+                              onClick={() =>
+                                onBook(c.courseId, o.slotId, o.date, s.start)
+                              }
                             >
                               {s.start}–{s.end}
                               {full ? " · taken" : ""}

@@ -45,8 +45,9 @@ export type SlotRow = {
   bookingCount: number;
 };
 
-function AddSlotDialog({ courseId }: { courseId: string }) {
+function AddSlotDialog({ courseId }: { courseId: string | null }) {
   const router = useRouter();
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [weekday, setWeekday] = useState("1");
   const [startTime, setStartTime] = useState("16:00");
@@ -67,6 +68,7 @@ function AddSlotDialog({ courseId }: { courseId: string }) {
       toast.success("Slot added.");
       setOpen(false);
       router.refresh();
+      await utils.courses.calendar.invalidate();
     } catch (err) {
       toast.error((err as Error).message);
     }
@@ -143,6 +145,7 @@ function DeleteSlot({
   bookingCount: number;
 }) {
   const router = useRouter();
+  const utils = trpc.useUtils();
   const del = trpc.courses.deleteSlot.useMutation();
   return (
     <Button
@@ -160,6 +163,7 @@ function DeleteSlot({
         await del.mutateAsync({ id });
         toast.success("Slot removed.");
         router.refresh();
+        await utils.courses.calendar.invalidate();
       }}
     >
       <Trash2 className="size-4 text-destructive" />
@@ -170,9 +174,11 @@ function DeleteSlot({
 export function SlotManager({
   courseId,
   slots,
+  title = "Training days & slots",
 }: {
-  courseId: string;
+  courseId: string | null; // null = shared slots
   slots: SlotRow[];
+  title?: string;
 }) {
   // Group ranges by weekday (Monday-first), so a day shows once with its
   // ranges listed on the right.
@@ -190,9 +196,10 @@ export function SlotManager({
     <Card className="p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="font-semibold">Training days & slots</p>
+          <p className="font-semibold">{title}</p>
           <p className="text-sm text-muted-foreground">
-            Each range splits into single-rider sessions of the chosen length.
+            Each range splits into sessions of the chosen length. Set seats per
+            session in the calendar.
           </p>
         </div>
         <AddSlotDialog courseId={courseId} />

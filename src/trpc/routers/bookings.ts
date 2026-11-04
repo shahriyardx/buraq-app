@@ -2,10 +2,12 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   computeProgress,
+  courseSlotsWhere,
   dateKey,
   hmToMin,
   loadBookedWeekKeys,
   minToHm,
+  slotFitsCourse,
   subSessions,
   todayUtc,
   toUtcDate,
@@ -39,7 +41,8 @@ export const bookingsRouter = createTRPCRouter({
             name: true,
             durationWeeks: true,
             maxBookingsPerWeek: true,
-            slots: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
+            scheduleLive: true,
+            privateSchedule: true,
           },
         },
       },
@@ -58,6 +61,7 @@ export const bookingsRouter = createTRPCRouter({
           startDate: e.startDate,
           createdAt: e.createdAt,
           bonusWeeks: e.bonusWeeks,
+          classAdjust: e.classAdjust,
           course: { durationWeeks: e.course.durationWeeks },
         },
         bookedWeeks,
@@ -77,20 +81,20 @@ export const bookingsRouter = createTRPCRouter({
           : weekEndKey(start);
       const endDate = toUtcDate(endKey);
 
-      const slotIds = e.course.slots.map((s) => s.id);
+      const slots = await prisma.courseSlot.findMany({
+        where: courseSlotsWhere(e.course),
+        orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+      });
+      const slotIds = slots.map((s) => s.id);
       const [allBookings, myBookings] = await Promise.all([
-        // Seat usage per (slot, date, sub-session start).
+        // Seat usage per (slot, date, sub-session start), across all courses.
         prisma.slotBooking.groupBy({
           by: ["slotId", "date", "startTime"],
           where: { slotId: { in: slotIds }, date: { gte: start } },
           _count: { _all: true },
         }),
         prisma.slotBooking.findMany({
-          where: {
-            studentId,
-            slot: { courseId: e.courseId },
-            date: { gte: start },
-          },
+          where: { studentId, courseId: e.courseId, date: { gte: start } },
           select: { id: true, slotId: true, date: true, startTime: true },
         }),
       ]);
@@ -109,7 +113,7 @@ export const bookingsRouter = createTRPCRouter({
       }
 
       const occurrences = [];
-      if (progress.bookingOpen) {
+      if (progress.bookingOpen && e.course.scheduleLive) {
         for (
           const d = new Date(start);
           d <= endDate;
@@ -117,7 +121,7 @@ export const bookingsRouter = createTRPCRouter({
         ) {
           const wd = d.getUTCDay();
           const dk = dateKey(d);
-          for (const s of e.course.slots) {
+          for (const s of slots) {
             if (s.weekday !== wd) continue;
             const myBooking = mine.get(`${s.id}|${dk}`) ?? null;
             const sessions = subSessions(
@@ -157,7 +161,7 @@ export const bookingsRouter = createTRPCRouter({
       const weekUsage: Record<string, number> = {};
       for (const wk of bookedWeeks) weekUsage[wk] = 0;
       const perWeek = await prisma.slotBooking.findMany({
-        where: { studentId, slot: { courseId: e.courseId } },
+        where: { studentId, courseId: e.courseId },
         select: { date: true },
       });
       for (const b of perWeek) {
@@ -174,6 +178,7 @@ export const bookingsRouter = createTRPCRouter({
         bonusWeeks: progress.bonusWeeks,
         maxBookingsPerWeek: e.course.maxBookingsPerWeek,
         bookingOpen: progress.bookingOpen,
+        scheduleLive: e.course.scheduleLive,
         currentWeek: progress.currentWeek,
         lastAllowedWeek: progress.lastAllowedWeek,
         occurrences,
@@ -189,12 +194,12 @@ export const bookingsRouter = createTRPCRouter({
     const bookings = await prisma.slotBooking.findMany({
       where: { studentId: ctx.session.user.id, date: { gte: start } },
       orderBy: { date: "asc" },
-      include: { slot: { include: { course: { select: { name: true } } } } },
+      include: { slot: true, course: { select: { name: true } } },
     });
     return bookings.map((b) => ({
       id: b.id,
       date: b.date,
-      courseName: b.slot.course.name,
+      courseName: b.course.name,
       startTime: b.startTime || b.slot.startTime,
       endTime: b.startTime
         ? minToHm(hmToMin(b.startTime) + b.slot.sessionMinutes)
@@ -206,6 +211,7 @@ export const bookingsRouter = createTRPCRouter({
     .input(
       z.object({
         slotId: z.string(),
+        courseId: z.string(),
         date: z.string(),
         startTime: z.string().min(1, "Pick a time"),
       }),
@@ -231,19 +237,20 @@ export const bookingsRouter = createTRPCRouter({
         });
       }
 
-      const slot = await prisma.courseSlot.findUnique({
-        where: { id: input.slotId },
-        include: {
-          course: {
-            select: {
-              id: true,
-              durationWeeks: true,
-              maxBookingsPerWeek: true,
-            },
+      const [slot, course] = await Promise.all([
+        prisma.courseSlot.findUnique({ where: { id: input.slotId } }),
+        prisma.course.findUnique({
+          where: { id: input.courseId },
+          select: {
+            id: true,
+            durationWeeks: true,
+            maxBookingsPerWeek: true,
+            scheduleLive: true,
+            privateSchedule: true,
           },
-        },
-      });
-      if (!slot) {
+        }),
+      ]);
+      if (!slot || !course || !slotFitsCourse(slot, course)) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Slot not found." });
       }
       if (slot.weekday !== date.getUTCDay()) {
@@ -265,9 +272,16 @@ export const bookingsRouter = createTRPCRouter({
         });
       }
 
+      if (!course.scheduleLive) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This schedule is not live yet.",
+        });
+      }
+
       const enrollment = await prisma.enrollment.findUnique({
         where: {
-          studentId_courseId: { studentId, courseId: slot.course.id },
+          studentId_courseId: { studentId, courseId: course.id },
         },
       });
       if (!enrollment) {
@@ -277,18 +291,19 @@ export const bookingsRouter = createTRPCRouter({
         });
       }
 
-      const bookedWeeks = await loadBookedWeekKeys(studentId, slot.course.id);
+      const bookedWeeks = await loadBookedWeekKeys(studentId, course.id);
       const progress = computeProgress(
         {
           id: enrollment.id,
           studentId,
-          courseId: slot.course.id,
+          courseId: course.id,
           status: enrollment.status,
           approvedAt: enrollment.approvedAt,
           startDate: enrollment.startDate,
           createdAt: enrollment.createdAt,
           bonusWeeks: enrollment.bonusWeeks,
-          course: { durationWeeks: slot.course.durationWeeks },
+          classAdjust: enrollment.classAdjust,
+          course: { durationWeeks: course.durationWeeks },
         },
         bookedWeeks,
       );
@@ -312,7 +327,7 @@ export const bookingsRouter = createTRPCRouter({
 
       // One booking per day (across all of this course's ranges that day).
       const dayCount = await prisma.slotBooking.count({
-        where: { studentId, date, slot: { courseId: slot.course.id } },
+        where: { studentId, date, courseId: course.id },
       });
       if (dayCount >= 1) {
         throw new TRPCError({
@@ -330,13 +345,13 @@ export const bookingsRouter = createTRPCRouter({
         where: {
           studentId,
           date: { gte: weekStart, lt: weekEnd },
-          slot: { courseId: slot.course.id },
+          courseId: course.id,
         },
       });
-      if (weekCount >= slot.course.maxBookingsPerWeek) {
+      if (weekCount >= course.maxBookingsPerWeek) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Weekly limit reached (${slot.course.maxBookingsPerWeek}/week for this course).`,
+          message: `Weekly limit reached (${course.maxBookingsPerWeek}/week for this course).`,
         });
       }
 
@@ -356,6 +371,7 @@ export const bookingsRouter = createTRPCRouter({
         const booking = await prisma.slotBooking.create({
           data: {
             slotId: slot.id,
+            courseId: course.id,
             studentId,
             date,
             startTime: input.startTime,
@@ -375,13 +391,14 @@ export const bookingsRouter = createTRPCRouter({
         {
           id: enrollment.id,
           studentId,
-          courseId: slot.course.id,
+          courseId: course.id,
           status: enrollment.status,
           approvedAt: enrollment.approvedAt,
           startDate: enrollment.startDate,
           createdAt: enrollment.createdAt,
           bonusWeeks: enrollment.bonusWeeks,
-          course: { durationWeeks: slot.course.durationWeeks },
+          classAdjust: enrollment.classAdjust,
+          course: { durationWeeks: course.durationWeeks },
         },
         bookedWeeks,
       );

@@ -21,6 +21,7 @@ import { formatCurrency, formatDate, initials } from "@/lib/format";
 import { getCurrency } from "@/lib/settings";
 import { api } from "@/trpc/server";
 import { StudentFormDialog } from "../student-form-dialog";
+import { ClassesDialog } from "./classes-dialog";
 import { EnrollCourseDialog } from "./enroll-course-dialog";
 
 export const metadata: Metadata = { title: "Student profile" };
@@ -131,7 +132,7 @@ export default async function StudentProfilePage({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Course</TableHead>
-                    <TableHead>Progress</TableHead>
+                    <TableHead>Classes</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -151,7 +152,26 @@ export default async function StudentProfilePage({
                         <TableCell className="font-medium">
                           {e.courseName}
                         </TableCell>
-                        <TableCell>{e.progress}%</TableCell>
+                        <TableCell>
+                          {e.totalClasses > 0 ? (
+                            <span className="flex items-center gap-1">
+                              {e.completedClasses}/{e.totalClasses} done ·{" "}
+                              {Math.max(0, e.totalClasses - e.completedClasses)}{" "}
+                              left
+                              <ClassesDialog
+                                enrollmentId={e.id}
+                                courseName={e.courseName}
+                                completed={e.completedClasses}
+                                total={e.totalClasses}
+                                courseClasses={e.courseClasses}
+                              />
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              No fixed number
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <StatusBadge status={e.status} />
                         </TableCell>

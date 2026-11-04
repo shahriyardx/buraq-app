@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
-import { Card } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/dal";
 import { api } from "@/trpc/server";
+import { SlotManager } from "../courses/[id]/slot-manager";
 import { SlotCalendar } from "./slot-calendar";
 
 export const metadata: Metadata = { title: "Calendar" };
 
 export default async function CalendarPage() {
   await requireAdmin();
-  const courses = await api.courses.list();
+  const [courses, sharedSlots] = await Promise.all([
+    api.courses.list(),
+    api.courses.slots({ courseId: null }),
+  ]);
   const options = courses.map((c) => ({ id: c.id, name: c.name }));
 
   const now = new Date();
@@ -18,20 +21,20 @@ export default async function CalendarPage() {
     <>
       <PageHeader
         title="Slots Calendar"
-        description="Per-course month view. Click a date to see booked and open slots, and assign students."
+        description="Shared slots are used by every course except private ones. Click a date to see booked and open slots, and assign students."
       />
-      {options.length === 0 ? (
-        <Card className="p-10 text-center text-sm text-muted-foreground">
-          No courses yet. Create a course with training slots first.
-        </Card>
-      ) : (
+      <div className="space-y-6">
         <SlotCalendar
           courses={options}
-          initialCourseId={options[0].id}
           initialYear={now.getUTCFullYear()}
           initialMonth={now.getUTCMonth() + 1}
         />
-      )}
+        <SlotManager
+          courseId={null}
+          slots={sharedSlots}
+          title="Shared training days & slots"
+        />
+      </div>
     </>
   );
 }

@@ -50,12 +50,21 @@ export default async function EditCoursePage({
             price: course.price,
             maxBookingsPerWeek: course.maxBookingsPerWeek,
             enrollmentPaused: course.enrollmentPaused,
+            privateSchedule: course.privateSchedule,
             instructorUserId: course.instructorUserId,
             schedule: course.schedule,
           }}
         />
 
-        <SlotManager courseId={course.id} slots={slots} />
+        <SlotManager
+          courseId={course.id}
+          slots={slots}
+          title={
+            course.privateSchedule
+              ? "Private training days & slots"
+              : "Extra slots for this course only (shared slots also apply)"
+          }
+        />
       </div>
     </>
   );

@@ -3,7 +3,9 @@ import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import {
   computeProgress,
+  courseSlotsWhere,
   loadBookedWeekKeys,
+  slotFitsCourse,
   subSessions,
 } from "@/lib/enrollment";
 import { enrollmentEmailVars, enrollStudent } from "@/lib/enrollments";
@@ -31,6 +33,7 @@ const courseInput = z.object({
     .min(1, "Must allow at least 1 booking per week")
     .default(1),
   enrollmentPaused: z.boolean().default(false),
+  privateSchedule: z.boolean().default(false),
   instructor: z.string().nullish(), // manual fallback when no account is linked
   instructorUserId: z.string().nullish(),
 });
@@ -40,7 +43,7 @@ const slotInput = z.object({
   startTime: z.string().min(1, "Start time required"),
   endTime: z.string().min(1, "End time required"),
   sessionMinutes: z.number().int().min(5).max(480).default(30),
-  // One rider per sub-session. Kept for flexibility; forms always send 1.
+  // Riders per sub-session (one per horse). Editable later from the calendar.
   capacity: z.number().int().min(1).default(1),
 });
 
@@ -70,6 +73,7 @@ async function courseData(input: z.infer<typeof courseInput>) {
     maxStudents: input.maxStudents ?? null,
     maxBookingsPerWeek: input.maxBookingsPerWeek ?? 1,
     enrollmentPaused: input.enrollmentPaused ?? false,
+    privateSchedule: input.privateSchedule ?? false,
     instructor,
     instructorUserId,
   };
@@ -93,6 +97,7 @@ async function recomputeEnrollmentStatus(studentId: string, courseId: string) {
       startDate: enrollment.startDate,
       createdAt: enrollment.createdAt,
       bonusWeeks: enrollment.bonusWeeks,
+      classAdjust: enrollment.classAdjust,
       course: { durationWeeks: enrollment.course.durationWeeks },
     },
     booked,
@@ -185,6 +190,7 @@ export const coursesRouter = createTRPCRouter({
               startDate: e.startDate,
               createdAt: e.createdAt,
               bonusWeeks: e.bonusWeeks,
+              classAdjust: e.classAdjust,
               course: { durationWeeks: course.durationWeeks },
             },
             booked,
@@ -210,6 +216,7 @@ export const coursesRouter = createTRPCRouter({
         maxStudents: course.maxStudents,
         maxBookingsPerWeek: course.maxBookingsPerWeek,
         enrollmentPaused: course.enrollmentPaused,
+        privateSchedule: course.privateSchedule,
         instructor: course.instructor,
         instructorUserId: course.instructorUserId,
         status: course.status,
@@ -486,8 +493,9 @@ export const coursesRouter = createTRPCRouter({
     }),
 
   // ─── Training slots (recurring weekly templates) ──────────────────────────
+  /** A course's own slots, or the shared slots when courseId is null. */
   slots: adminProcedure
-    .input(z.object({ courseId: z.string() }))
+    .input(z.object({ courseId: z.string().nullable() }))
     .query(async ({ input }) => {
       const slots = await prisma.courseSlot.findMany({
         where: { courseId: input.courseId },
@@ -506,7 +514,7 @@ export const coursesRouter = createTRPCRouter({
     }),
 
   addSlot: adminProcedure
-    .input(slotInput.extend({ courseId: z.string() }))
+    .input(slotInput.extend({ courseId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       if (input.endTime <= input.startTime) {
         throw new TRPCError({
@@ -549,6 +557,49 @@ export const coursesRouter = createTRPCRouter({
       return { ok: true };
     }),
 
+  /**
+   * Sets how many classes an enrollment needs in total. Raise it for a
+   * compensation class; lower it for a migrated rider who already did some.
+   */
+  setTotalClasses: adminProcedure
+    .input(
+      z.object({
+        enrollmentId: z.string(),
+        total: z.number().int().min(1).max(200),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const e = await prisma.enrollment.findUnique({
+        where: { id: input.enrollmentId },
+        include: { course: { select: { durationWeeks: true } } },
+      });
+      if (!e) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!e.course.durationWeeks) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This course has no fixed number of classes.",
+        });
+      }
+      await prisma.enrollment.update({
+        where: { id: e.id },
+        data: {
+          classAdjust: input.total - e.course.durationWeeks,
+          // Re-derive below; a completed rider given more classes reopens.
+          ...(e.status === "COMPLETED" ? { status: "ACTIVE" as const } : {}),
+        },
+      });
+      await recomputeEnrollmentStatus(e.studentId, e.courseId);
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "enrollment.set_classes",
+        entity: "Enrollment",
+        entityId: e.id,
+        detail: `${input.total} classes`,
+      });
+      return { ok: true };
+    }),
+
   /** Grant an enrollment one more bookable week (reopens if INCOMPLETE). */
   grantExtraWeek: adminProcedure
     .input(
@@ -584,44 +635,62 @@ export const coursesRouter = createTRPCRouter({
       return { ok: true };
     }),
 
-  // ─── Calendar (per course, one month) ─────────────────────────────────────
+  // ─── Calendar (one month; a course, or the shared slots when null) ────────
   calendar: adminProcedure
     .input(
       z.object({
-        courseId: z.string(),
+        courseId: z.string().nullable(),
         year: z.number().int(),
         month: z.number().int().min(1).max(12), // 1-12
       }),
     )
     .query(async ({ input }) => {
-      const course = await prisma.course.findUnique({
-        where: { id: input.courseId },
-        include: {
-          slots: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
-          enrollments: {
-            where: { status: { in: ["ACTIVE", "COMPLETED", "INCOMPLETE"] } },
-            include: { student: { select: { id: true, name: true } } },
-          },
-        },
+      const course = input.courseId
+        ? await prisma.course.findUnique({ where: { id: input.courseId } })
+        : null;
+      if (input.courseId && !course) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const slots = await prisma.courseSlot.findMany({
+        where: course ? courseSlotsWhere(course) : { courseId: null },
+        orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
       });
-      if (!course) throw new TRPCError({ code: "NOT_FOUND" });
+      // Who can be assigned: this course's riders, or (shared view) riders of
+      // every non-private course. One option per enrollment.
+      const enrollments = await prisma.enrollment.findMany({
+        where: {
+          status: { in: ["ACTIVE", "COMPLETED", "INCOMPLETE"] },
+          ...(course
+            ? { courseId: course.id }
+            : { course: { privateSchedule: false } }),
+        },
+        include: {
+          student: { select: { id: true, name: true } },
+          course: { select: { name: true } },
+        },
+        orderBy: { student: { name: "asc" } },
+      });
 
       const monthStart = new Date(Date.UTC(input.year, input.month - 1, 1));
       const monthEnd = new Date(Date.UTC(input.year, input.month, 1));
 
-      const bookings = course.slots.length
+      // Seats are shared, so show every course's bookings on these slots.
+      const bookings = slots.length
         ? await prisma.slotBooking.findMany({
             where: {
-              slotId: { in: course.slots.map((s) => s.id) },
+              slotId: { in: slots.map((s) => s.id) },
               date: { gte: monthStart, lt: monthEnd },
             },
-            include: { student: { select: { id: true, name: true } } },
+            include: {
+              student: { select: { id: true, name: true } },
+              course: { select: { name: true } },
+            },
           })
         : [];
       type Booking = {
         bookingId: string;
         studentId: string;
         studentName: string;
+        courseName: string;
       };
       // key = slotId|date|sessionStart
       const bySession = new Map<string, Booking[]>();
@@ -632,6 +701,7 @@ export const coursesRouter = createTRPCRouter({
           bookingId: b.id,
           studentId: b.student.id,
           studentName: b.student.name,
+          courseName: b.course.name,
         });
         bySession.set(key, arr);
       }
@@ -644,6 +714,7 @@ export const coursesRouter = createTRPCRouter({
         date: string;
         slots: {
           slotId: string;
+          shared: boolean;
           windowStart: string;
           windowEnd: string;
           sessionMinutes: number;
@@ -661,7 +732,7 @@ export const coursesRouter = createTRPCRouter({
         const date = new Date(Date.UTC(input.year, input.month - 1, d));
         const dk = date.toISOString().slice(0, 10);
         const wd = date.getUTCDay();
-        const slots = course.slots
+        const daySlots = slots
           .filter((s) => s.weekday === wd)
           .map((s) => {
             const sessions = subSessions(
@@ -676,6 +747,7 @@ export const coursesRouter = createTRPCRouter({
             }));
             return {
               slotId: s.id,
+              shared: s.courseId === null,
               windowStart: s.startTime,
               windowEnd: s.endTime,
               sessionMinutes: s.sessionMinutes,
@@ -684,17 +756,63 @@ export const coursesRouter = createTRPCRouter({
               sessions,
             };
           });
-        if (slots.length) days.push({ date: dk, slots });
+        if (daySlots.length) days.push({ date: dk, slots: daySlots });
       }
 
       return {
-        courseName: course.name,
-        enrolledStudents: course.enrollments.map((e) => ({
+        courseName: course?.name ?? "Shared slots",
+        scheduleLive: course?.scheduleLive ?? null,
+        enrolledStudents: enrollments.map((e) => ({
           id: e.student.id,
-          name: e.student.name,
+          courseId: e.courseId,
+          name: course
+            ? e.student.name
+            : `${e.student.name} · ${e.course.name}`,
         })),
         days,
       };
+    }),
+
+  /** Students can book this course's slots only while the schedule is live. */
+  setScheduleLive: adminProcedure
+    .input(z.object({ id: z.string(), live: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.course.update({
+        where: { id: input.id },
+        data: { scheduleLive: input.live },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: input.live ? "schedule.live" : "schedule.hide",
+        entity: "Course",
+        entityId: input.id,
+      });
+      return { ok: true };
+    }),
+
+  /** Seats (riders/horses) per sub-session of a slot. Existing bookings stay. */
+  setSlotCapacity: adminProcedure
+    .input(
+      z.object({
+        slotId: z.string(),
+        capacity: z.number().int().min(1).max(50),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await prisma.courseSlot.update({
+        where: { id: input.slotId },
+        data: { capacity: input.capacity },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "slot.capacity",
+        entity: "CourseSlot",
+        entityId: input.slotId,
+        detail: `${input.capacity} seats`,
+      });
+      return { ok: true };
     }),
 
   /** Admin directly books a slot for an enrolled student (capacity-checked). */
@@ -702,6 +820,7 @@ export const coursesRouter = createTRPCRouter({
     .input(
       z.object({
         slotId: z.string(),
+        courseId: z.string(),
         date: z.string(),
         startTime: z.string().min(1),
         studentId: z.string(),
@@ -724,7 +843,13 @@ export const coursesRouter = createTRPCRouter({
           courseId: true,
         },
       });
-      if (!slot) throw new TRPCError({ code: "NOT_FOUND" });
+      const course = await prisma.course.findUnique({
+        where: { id: input.courseId },
+        select: { id: true, privateSchedule: true },
+      });
+      if (!slot || !course || !slotFitsCourse(slot, course)) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
       if (slot.weekday !== date.getUTCDay()) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -746,7 +871,7 @@ export const coursesRouter = createTRPCRouter({
         where: {
           studentId_courseId: {
             studentId: input.studentId,
-            courseId: slot.courseId,
+            courseId: course.id,
           },
         },
       });
@@ -754,6 +879,20 @@ export const coursesRouter = createTRPCRouter({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Student is not enrolled in this course.",
+        });
+      }
+      // One booking per day (across all of this course's ranges that day).
+      const dayCount = await prisma.slotBooking.count({
+        where: {
+          studentId: input.studentId,
+          date,
+          courseId: course.id,
+        },
+      });
+      if (dayCount >= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Student already has a session on this day.",
         });
       }
       const used = await prisma.slotBooking.count({
@@ -769,6 +908,7 @@ export const coursesRouter = createTRPCRouter({
         await prisma.slotBooking.create({
           data: {
             slotId: slot.id,
+            courseId: course.id,
             studentId: input.studentId,
             date,
             startTime: input.startTime,
@@ -780,7 +920,7 @@ export const coursesRouter = createTRPCRouter({
           message: "Student already has this slot on that date.",
         });
       }
-      await recomputeEnrollmentStatus(input.studentId, slot.courseId);
+      await recomputeEnrollmentStatus(input.studentId, course.id);
       await logAction({
         actorId: ctx.session.user.id,
         actorName: ctx.session.user.name,
@@ -797,11 +937,10 @@ export const coursesRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const booking = await prisma.slotBooking.findUnique({
         where: { id: input.id },
-        include: { slot: { select: { courseId: true } } },
       });
       if (!booking) throw new TRPCError({ code: "NOT_FOUND" });
       await prisma.slotBooking.delete({ where: { id: input.id } });
-      await recomputeEnrollmentStatus(booking.studentId, booking.slot.courseId);
+      await recomputeEnrollmentStatus(booking.studentId, booking.courseId);
       await logAction({
         actorId: ctx.session.user.id,
         actorName: ctx.session.user.name,

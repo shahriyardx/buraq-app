@@ -38,6 +38,7 @@ const schema = z.object({
     .refine((v) => v.trim() !== "" && Number(v) >= 0, "Price must be positive"),
   maxBookingsPerWeek: z.string().optional(),
   enrollmentPaused: z.boolean().optional(),
+  privateSchedule: z.boolean().optional(),
   schedule: z.string().optional(),
 });
 
@@ -52,6 +53,7 @@ export type CourseEditValues = {
   price: string;
   maxBookingsPerWeek: number;
   enrollmentPaused: boolean;
+  privateSchedule: boolean;
   instructorUserId: string | null;
   schedule: string | null;
 };
@@ -77,6 +79,7 @@ export function CourseEditForm({ course }: { course: CourseEditValues }) {
       price: course.price,
       maxBookingsPerWeek: String(course.maxBookingsPerWeek),
       enrollmentPaused: course.enrollmentPaused,
+      privateSchedule: course.privateSchedule,
       schedule: course.schedule ?? "",
     },
   });
@@ -98,6 +101,7 @@ export function CourseEditForm({ course }: { course: CourseEditValues }) {
         price: Number(values.price),
         maxBookingsPerWeek: toInt(values.maxBookingsPerWeek) ?? 1,
         enrollmentPaused: values.enrollmentPaused ?? false,
+        privateSchedule: values.privateSchedule ?? false,
         schedule: values.schedule || null,
       });
       toast.success("Course updated.");
@@ -269,6 +273,30 @@ export function CourseEditForm({ course }: { course: CourseEditValues }) {
                   </FieldLabel>
                   <p className="text-xs text-muted-foreground">
                     Students can't self-enroll; admins still can.
+                  </p>
+                </div>
+              </Field>
+            )}
+          />
+          <Controller
+            control={control}
+            name="privateSchedule"
+            render={({ field }) => (
+              <Field
+                orientation="horizontal"
+                className="items-start gap-3 sm:col-span-2"
+              >
+                <Checkbox
+                  id="privateSchedule"
+                  checked={field.value ?? false}
+                  onCheckedChange={(c) => field.onChange(c === true)}
+                />
+                <div className="space-y-0.5">
+                  <FieldLabel htmlFor="privateSchedule">
+                    Private schedule
+                  </FieldLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Uses only this course's own slots, not the shared slots.
                   </p>
                 </div>
               </Field>

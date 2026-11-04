@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { logAction } from "@/lib/audit";
 import { parseCsv } from "@/lib/csv";
+import { computeProgress, loadBookedWeekKeys } from "@/lib/enrollment";
 import { enrollStudent } from "@/lib/enrollments";
 import { generateStudentId } from "@/lib/ids";
 import { notifyAccountCreated, notifyAdmins, notifyUser } from "@/lib/notify";
@@ -110,7 +111,9 @@ export const studentsRouter = createTRPCRouter({
         where: { id: input.id, role: "STUDENT" },
         include: {
           enrollments: {
-            include: { course: { select: { name: true } } },
+            include: {
+              course: { select: { name: true, durationWeeks: true } },
+            },
             orderBy: { createdAt: "desc" },
           },
           attendances: {
@@ -142,13 +145,23 @@ export const studentsRouter = createTRPCRouter({
         photoUrl: s.photoUrl,
         status: s.status,
         createdAt: s.createdAt,
-        enrollments: s.enrollments.map((e) => ({
-          id: e.id,
-          courseId: e.courseId,
-          courseName: e.course.name,
-          progress: e.progress,
-          status: e.status,
-        })),
+        enrollments: await Promise.all(
+          s.enrollments.map(async (e) => {
+            const p = computeProgress(
+              { ...e, course: { durationWeeks: e.course.durationWeeks } },
+              await loadBookedWeekKeys(s.id, e.courseId),
+            );
+            return {
+              id: e.id,
+              courseId: e.courseId,
+              courseName: e.course.name,
+              status: p.derivedStatus,
+              completedClasses: p.completedWeeks,
+              totalClasses: p.requiredWeeks, // 0 = no fixed number
+              courseClasses: e.course.durationWeeks ?? 0,
+            };
+          }),
+        ),
         attendances: s.attendances.map((a) => ({
           id: a.id,
           date: a.date,

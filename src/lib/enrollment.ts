@@ -65,11 +65,12 @@ export type EnrollmentLite = {
   startDate: Date | null;
   createdAt: Date;
   bonusWeeks: number;
+  classAdjust: number;
   course: { durationWeeks: number | null };
 };
 
 export type EnrollmentProgress = {
-  requiredWeeks: number; // 0 = open-ended (no duration set)
+  requiredWeeks: number; // 0 = open-ended (no duration set); includes classAdjust
   completedWeeks: number; // distinct weeks with ≥1 booking
   bonusWeeks: number;
   anchorWeek: string;
@@ -92,7 +93,10 @@ export function computeProgress(
 ): EnrollmentProgress {
   const anchor = e.approvedAt ?? e.startDate ?? e.createdAt;
   const anchorWeek = weekStartKey(anchor);
-  const required = e.course.durationWeeks ?? 0;
+  // Admin adjusts the class count per enrollment (compensation / migrated).
+  const required = e.course.durationWeeks
+    ? Math.max(1, e.course.durationWeeks + e.classAdjust)
+    : 0;
   const currentWeek = weekStartKey(todayUtc());
   const completedWeeks = bookedWeekKeys.size;
 
@@ -134,10 +138,31 @@ export function computeProgress(
   };
 }
 
+/** Slots a course can book: its own, plus shared ones unless it is private. */
+export function courseSlotsWhere(course: {
+  id: string;
+  privateSchedule: boolean;
+}) {
+  return course.privateSchedule
+    ? { courseId: course.id }
+    : { OR: [{ courseId: course.id }, { courseId: null }] };
+}
+
+/** True when `slot` is bookable for `course` (see courseSlotsWhere). */
+export function slotFitsCourse(
+  slot: { courseId: string | null },
+  course: { id: string; privateSchedule: boolean },
+) {
+  return (
+    slot.courseId === course.id ||
+    (slot.courseId === null && !course.privateSchedule)
+  );
+}
+
 /** Distinct Monday-week keys in which the student booked a slot for a course. */
 export async function loadBookedWeekKeys(studentId: string, courseId: string) {
   const bookings = await prisma.slotBooking.findMany({
-    where: { studentId, slot: { courseId } },
+    where: { studentId, courseId },
     select: { date: true },
   });
   return new Set(bookings.map((b) => weekStartKey(b.date)));

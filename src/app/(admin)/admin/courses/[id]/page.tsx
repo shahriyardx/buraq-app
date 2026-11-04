@@ -60,6 +60,7 @@ export default async function CourseDetailPage({
     ["Price", formatCurrency(course.price, currency)],
     ["Bookings / week", String(course.maxBookingsPerWeek)],
     ["Enrollment", course.enrollmentPaused ? "Paused" : "Open"],
+    ["Slots", course.privateSchedule ? "Private" : "Shared + own"],
     ["Schedule", course.schedule ?? "—"],
     ["Enrolled", String(course.enrollments.length)],
     ["Created", formatDate(course.createdAt)],
@@ -150,7 +151,15 @@ export default async function CourseDetailPage({
             </Table>
           </Card>
 
-          <SlotManager courseId={course.id} slots={slots} />
+          <SlotManager
+            courseId={course.id}
+            slots={slots}
+            title={
+              course.privateSchedule
+                ? "Private training days & slots"
+                : "Extra slots for this course only (shared slots also apply)"
+            }
+          />
 
           <ClassSchedule courseId={course.id} sessions={sessions} />
         </div>

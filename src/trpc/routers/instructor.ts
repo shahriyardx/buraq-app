@@ -88,7 +88,18 @@ export const instructorRouter = createTRPCRouter({
         description: true,
         level: true,
         schedule: true,
+        scheduleLive: true,
         status: true,
+        slots: {
+          orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+          select: {
+            id: true,
+            weekday: true,
+            startTime: true,
+            endTime: true,
+            capacity: true,
+          },
+        },
         _count: { select: { enrollments: true } },
       },
     });
@@ -98,10 +109,79 @@ export const instructorRouter = createTRPCRouter({
       description: c.description,
       level: c.level,
       schedule: c.schedule,
+      scheduleLive: c.scheduleLive,
+      slots: c.slots,
       status: c.status,
       enrolledCount: c._count.enrollments,
     }));
   }),
+
+  /** Students can book this course's slots only while the schedule is live. */
+  setScheduleLive: instructorProcedure
+    .input(z.object({ courseId: z.string(), live: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnsCourse(ctx.session.user.id, input.courseId);
+      await prisma.course.update({
+        where: { id: input.courseId },
+        data: { scheduleLive: input.live },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: input.live ? "schedule.live" : "schedule.hide",
+        entity: "Course",
+        entityId: input.courseId,
+      });
+      return { ok: true };
+    }),
+
+  /** Shared slots (used by every non-private course) for the seats picker. */
+  sharedSlots: instructorProcedure.query(async () => {
+    return prisma.courseSlot.findMany({
+      where: { courseId: null },
+      orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+      select: {
+        id: true,
+        weekday: true,
+        startTime: true,
+        endTime: true,
+        capacity: true,
+      },
+    });
+  }),
+
+  /** Seats (riders/horses) per sub-session of a slot in one of their courses. */
+  setSlotCapacity: instructorProcedure
+    .input(
+      z.object({
+        slotId: z.string(),
+        capacity: z.number().int().min(1).max(50),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const slot = await prisma.courseSlot.findUnique({
+        where: { id: input.slotId },
+        select: { courseId: true },
+      });
+      if (!slot) throw new TRPCError({ code: "NOT_FOUND" });
+      // Shared slots belong to every trainer; course slots to its instructor.
+      if (slot.courseId) {
+        await assertOwnsCourse(ctx.session.user.id, slot.courseId);
+      }
+      await prisma.courseSlot.update({
+        where: { id: input.slotId },
+        data: { capacity: input.capacity },
+      });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "slot.capacity",
+        entity: "CourseSlot",
+        entityId: input.slotId,
+        detail: `${input.capacity} seats`,
+      });
+      return { ok: true };
+    }),
 
   /** Active courses this instructor teaches — for attendance/schedule selects. */
   courseOptions: instructorProcedure.query(async ({ ctx }) => {

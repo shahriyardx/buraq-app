@@ -14,6 +14,18 @@ import { adminProcedure, createTRPCRouter } from "../init";
 
 const SINGLETON = "singleton";
 
+const paymentAccountInput = z.object({
+  id: z.string().optional(), // omit to create
+  provider: z.string().trim().min(1, "Provider is required"),
+  accountType: z.string().trim().nullish(),
+  accountName: z.string().trim().nullish(),
+  number: z.string().trim().min(3, "Number is required"),
+  qrUrl: z.string().url().nullish(), // new upload; omit to keep the current one
+  removeQr: z.boolean().optional(),
+  instructions: z.string().trim().nullish(),
+  enabled: z.boolean().default(true),
+});
+
 const emailKeyEnum = z.enum(
   EMAIL_TEMPLATE_KEYS as [EmailTemplateKey, ...EmailTemplateKey[]],
 );
@@ -350,6 +362,54 @@ export const settingsRouter = createTRPCRouter({
         action: "settings.certificate_template_update",
         entity: "CertificateTemplate",
         entityId: SINGLETON,
+      });
+      return { ok: true };
+    }),
+
+  // ─── Payment accounts (bKash, Nagad, bank…) shown on invoices ─────────────
+  paymentAccounts: adminProcedure.query(() =>
+    prisma.paymentAccount.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+  ),
+
+  savePaymentAccount: adminProcedure
+    .input(paymentAccountInput)
+    .mutation(async ({ ctx, input }) => {
+      const { id, qrUrl, removeQr, ...rest } = input;
+      const data = {
+        ...rest,
+        accountType: rest.accountType || null,
+        accountName: rest.accountName || null,
+        instructions: rest.instructions || null,
+        ...(qrUrl ? { qrUrl } : removeQr ? { qrUrl: null } : {}),
+      };
+      const account = id
+        ? await prisma.paymentAccount.update({ where: { id }, data })
+        : await prisma.paymentAccount.create({ data });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: id
+          ? "settings.payment_account_update"
+          : "settings.payment_account_add",
+        entity: "PaymentAccount",
+        entityId: account.id,
+        detail: `${account.provider} ${account.number}`,
+      });
+      return { id: account.id };
+    }),
+
+  deletePaymentAccount: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.paymentAccount.delete({ where: { id: input.id } });
+      await logAction({
+        actorId: ctx.session.user.id,
+        actorName: ctx.session.user.name,
+        action: "settings.payment_account_delete",
+        entity: "PaymentAccount",
+        entityId: input.id,
       });
       return { ok: true };
     }),

@@ -96,6 +96,8 @@ export const invoicesRouter = createTRPCRouter({
         status: i.status,
         paymentMethod: i.paymentMethod,
         transactionId: i.transactionId,
+        paidVia: i.paidVia,
+        payerNumber: i.payerNumber,
         pdfUrl: i.pdfUrl,
       };
     });
@@ -271,7 +273,12 @@ export const invoicesRouter = createTRPCRouter({
       }
       const invoice = await prisma.invoice.update({
         where: { id: input.id },
-        data: { status: "UNPAID", transactionId: null },
+        data: {
+          status: "UNPAID",
+          transactionId: null,
+          paidVia: null,
+          payerNumber: null,
+        },
       });
       await notifyUser({
         userId: invoice.studentId,
@@ -426,7 +433,7 @@ export const invoicesRouter = createTRPCRouter({
   get: studentProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      const [invoice, settings] = await Promise.all([
+      const [invoice, settings, paymentAccounts] = await Promise.all([
         prisma.invoice.findFirst({
           where: { id: input.id, studentId: ctx.session.user.id },
           include: { course: { select: { name: true } } },
@@ -434,6 +441,19 @@ export const invoicesRouter = createTRPCRouter({
         prisma.schoolSettings.findUnique({
           where: { id: "singleton" },
           select: { currency: true, name: true, email: true, phone: true },
+        }),
+        prisma.paymentAccount.findMany({
+          where: { enabled: true },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: {
+            id: true,
+            provider: true,
+            accountType: true,
+            accountName: true,
+            number: true,
+            qrUrl: true,
+            instructions: true,
+          },
         }),
       ]);
       if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
@@ -448,6 +468,8 @@ export const invoicesRouter = createTRPCRouter({
         status: invoice.status,
         transactionId: invoice.transactionId,
         paymentMethod: invoice.paymentMethod,
+        paidVia: invoice.paidVia,
+        paymentAccounts,
         pdfUrl: invoice.pdfUrl,
         currency: settings?.currency ?? DEFAULT_CURRENCY,
         schoolName: settings?.name ?? "Buraq Horse Riding School",
@@ -468,6 +490,8 @@ export const invoicesRouter = createTRPCRouter({
           id: z.string(),
           method: z.enum(["ONLINE", "CASH"]).default("ONLINE"),
           transactionId: z.string().optional(),
+          accountId: z.string().optional(), // PaymentAccount paid into
+          payerNumber: z.string().trim().max(40).optional(),
         })
         .refine(
           (v) =>
@@ -499,12 +523,24 @@ export const invoicesRouter = createTRPCRouter({
               : "This invoice is already paid.",
         });
       }
+      const online = input.method === "ONLINE";
+      const account =
+        online && input.accountId
+          ? await prisma.paymentAccount.findFirst({
+              where: { id: input.accountId, enabled: true },
+            })
+          : null;
+      // Snapshot the label so later account edits don't rewrite history.
+      const paidVia = account
+        ? `${account.provider}${account.accountType ? ` (${account.accountType})` : ""} ${account.number}`
+        : null;
       await prisma.invoice.update({
         where: { id: invoice.id },
         data: {
-          transactionId:
-            input.method === "CASH" ? null : (input.transactionId ?? null),
+          transactionId: online ? (input.transactionId ?? null) : null,
           paymentMethod: input.method,
+          paidVia,
+          payerNumber: online ? input.payerNumber || null : null,
           status: "PROCESSING",
         },
       });
@@ -515,7 +551,7 @@ export const invoicesRouter = createTRPCRouter({
           Number(invoice.amount) - Number(invoice.discount),
           await currencyCode(),
         ),
-        method: paymentMethodLabel(input.method),
+        method: paidVia ?? paymentMethodLabel(input.method),
         transactionId: input.method === "CASH" ? null : input.transactionId,
       };
       await notifyUser({

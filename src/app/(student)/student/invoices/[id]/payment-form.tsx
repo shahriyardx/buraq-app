@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -14,15 +15,109 @@ import { trpc } from "@/trpc/client";
 
 const schema = z.object({
   transactionId: z.string().min(3, "Enter a valid transaction id"),
+  payerNumber: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
-export function PaymentForm({ invoiceId }: { invoiceId: string }) {
+export type PayAccount = {
+  id: string;
+  provider: string;
+  accountType: string | null;
+  accountName: string | null;
+  number: string;
+  qrUrl: string | null;
+  instructions: string | null;
+};
+
+function copy(text: string) {
+  navigator.clipboard.writeText(text).then(
+    () => toast.success("Number copied."),
+    () => toast.error("Could not copy."),
+  );
+}
+
+/** The chosen account: QR, number to send money to, and instructions. */
+function AccountDetails({
+  account,
+  amount,
+  invoiceNumber,
+}: {
+  account: PayAccount;
+  amount: string;
+  invoiceNumber: string;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row">
+      {account.qrUrl && (
+        <img
+          src={account.qrUrl}
+          alt={`${account.provider} QR code`}
+          className="size-40 shrink-0 self-center rounded-md border bg-white object-contain p-1"
+        />
+      )}
+      <dl className="min-w-0 flex-1 space-y-2 text-sm">
+        <div>
+          <dt className="text-xs text-muted-foreground">
+            {account.provider}
+            {account.accountType ? ` ${account.accountType}` : ""} number
+          </dt>
+          <dd className="flex items-center gap-2 font-mono text-lg font-semibold">
+            {account.number}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => copy(account.number)}
+            >
+              <Copy className="size-3.5" />
+            </Button>
+          </dd>
+        </div>
+        {account.accountName && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Account name</dt>
+            <dd>{account.accountName}</dd>
+          </div>
+        )}
+        <div className="flex gap-6">
+          <div>
+            <dt className="text-xs text-muted-foreground">Amount</dt>
+            <dd className="font-semibold">{amount}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Reference</dt>
+            <dd className="font-mono">{invoiceNumber}</dd>
+          </div>
+        </div>
+        {account.instructions && (
+          <p className="whitespace-pre-line text-muted-foreground">
+            {account.instructions}
+          </p>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+export function PaymentForm({
+  invoiceId,
+  invoiceNumber,
+  amount,
+  accounts,
+}: {
+  invoiceId: string;
+  invoiceNumber: string;
+  amount: string; // formatted
+  accounts: PayAccount[];
+}) {
   const router = useRouter();
   const [method, setMethod] = useState("online");
+  const [accountId, setAccountId] = useState(accounts[0]?.id);
+  const account = accounts.find((a) => a.id === accountId);
   const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { transactionId: "" },
+    defaultValues: { transactionId: "", payerNumber: "" },
   });
   const submit = trpc.invoices.submitPayment.useMutation();
 
@@ -32,6 +127,8 @@ export function PaymentForm({ invoiceId }: { invoiceId: string }) {
         id: invoiceId,
         method: "ONLINE",
         transactionId: values.transactionId,
+        accountId: account?.id,
+        payerNumber: values.payerNumber,
       });
       toast.success("Payment submitted for review.");
       router.refresh();
@@ -57,7 +154,30 @@ export function PaymentForm({ invoiceId }: { invoiceId: string }) {
         <TabsTrigger value="cash">Cash</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="online">
+      <TabsContent value="online" className="space-y-4">
+        {accounts.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            {accounts.map((a) => (
+              <Button
+                key={a.id}
+                type="button"
+                size="sm"
+                variant={a.id === accountId ? "default" : "outline"}
+                onClick={() => setAccountId(a.id)}
+              >
+                {a.provider}
+                {a.accountType ? ` · ${a.accountType}` : ""}
+              </Button>
+            ))}
+          </div>
+        )}
+        {account && (
+          <AccountDetails
+            account={account}
+            amount={amount}
+            invoiceNumber={invoiceNumber}
+          />
+        )}
         <form onSubmit={handleSubmit(onOnline)} className="space-y-4">
           <Controller
             control={control}
@@ -77,6 +197,24 @@ export function PaymentForm({ invoiceId }: { invoiceId: string }) {
               </Field>
             )}
           />
+          {account && (
+            <Controller
+              control={control}
+              name="payerNumber"
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="payerNumber">
+                    Your {account.provider} number (sent from)
+                  </FieldLabel>
+                  <Input
+                    id="payerNumber"
+                    placeholder="01XXXXXXXXX"
+                    {...field}
+                  />
+                </Field>
+              )}
+            />
+          )}
           <Button type="submit" disabled={submit.isPending}>
             {submit.isPending ? "Submitting…" : "Submit payment"}
           </Button>

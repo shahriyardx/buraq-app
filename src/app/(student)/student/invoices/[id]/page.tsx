@@ -51,7 +51,7 @@ export default async function StudentInvoiceDetailPage({
                     <>
                       We received transaction{" "}
                       <span className="font-mono">{invoice.transactionId}</span>
-                      .
+                      {invoice.paidVia ? ` via ${invoice.paidVia}` : ""}.
                     </>
                   )}{" "}
                   Your training weeks start once it is approved.
@@ -72,27 +72,35 @@ export default async function StudentInvoiceDetailPage({
             </Card>
           )}
 
-          <Card className="p-6">
-            <h2 className="font-heading text-lg font-semibold">
-              Payment instructions
-            </h2>
-            <div className="mt-3 flex items-start gap-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-              <Info className="mt-0.5 size-4 shrink-0" />
-              <p>
-                Payment instructions will appear here. For now, contact the
-                office
-                {invoice.schoolEmail ? ` at ${invoice.schoolEmail}` : ""}
-                {invoice.schoolPhone ? ` (${invoice.schoolPhone})` : ""} to pay,
-                then enter your transaction id below.
-              </p>
-            </div>
-
-            {payable && (
-              <div className="mt-6">
-                <PaymentForm invoiceId={invoice.id} />
+          {payable && (
+            <Card className="p-6">
+              <h2 className="font-heading text-lg font-semibold">
+                Payment instructions
+              </h2>
+              <div className="mt-3 flex items-start gap-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                <Info className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  {invoice.paymentAccounts.length > 0
+                    ? `Send ${formatCurrency(invoice.net, invoice.currency)} to the account below, then enter the transaction ID from your payment message. Questions? Contact the office`
+                    : "Contact the office"}
+                  {invoice.schoolEmail ? ` at ${invoice.schoolEmail}` : ""}
+                  {invoice.schoolPhone ? ` (${invoice.schoolPhone})` : ""}
+                  {invoice.paymentAccounts.length > 0
+                    ? "."
+                    : " to pay, then enter your transaction id below."}
+                </p>
               </div>
-            )}
-          </Card>
+
+              <div className="mt-6">
+                <PaymentForm
+                  invoiceId={invoice.id}
+                  invoiceNumber={invoice.invoiceNumber}
+                  amount={formatCurrency(invoice.net, invoice.currency)}
+                  accounts={invoice.paymentAccounts}
+                />
+              </div>
+            </Card>
+          )}
         </div>
 
         <Card className="h-fit p-6">

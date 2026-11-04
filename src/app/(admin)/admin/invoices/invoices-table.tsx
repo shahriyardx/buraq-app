@@ -50,6 +50,8 @@ export type InvoiceRow = {
   status: string;
   paymentMethod: string | null;
   transactionId: string | null;
+  paidVia: string | null;
+  payerNumber: string | null;
   pdfUrl: string | null;
 };
 
@@ -221,7 +223,25 @@ export function InvoicesTable({
     {
       key: "status",
       header: "Status",
-      render: (i) => <StatusBadge status={i.status} />,
+      render: (i) => (
+        <div className="space-y-0.5">
+          <StatusBadge status={i.status} />
+          {i.status === "PROCESSING" && (
+            <p className="text-xs text-muted-foreground">
+              {i.paymentMethod === "CASH" ? (
+                "Cash at office"
+              ) : (
+                <>
+                  {i.paidVia ?? "Online"}
+                  {i.payerNumber ? ` · from ${i.payerNumber}` : ""}
+                  <br />
+                  TXN <span className="font-mono">{i.transactionId}</span>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      ),
     },
     {
       key: "actions",

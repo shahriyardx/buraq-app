@@ -371,6 +371,8 @@ model Invoice {
   paymentMethod PaymentMethod?
   reference     String?
   transactionId String?        // student-submitted payment reference
+  paidVia       String?        // account the student paid into, e.g. "bKash (Merchant) 01XXXXXXXXX"
+  payerNumber   String?        // number/account the student paid from
   status        InvoiceStatus  @default(UNPAID)
   pdfUrl        String?
   createdAt     DateTime       @default(now())
@@ -463,6 +465,22 @@ model SchoolSettings {
   updatedAt          DateTime @updatedAt
 
   @@map("school_settings")
+}
+
+// A wallet or bank account students pay into, shown on the invoice page.
+model PaymentAccount {
+  id           String   @id @default(cuid())
+  provider     String   // "bKash", "Nagad", "Rocket", "Bank"…
+  accountType  String?  // "Merchant", "Personal", "Agent"
+  accountName  String?
+  number       String   // wallet number or bank account number
+  qrUrl        String?
+  instructions String?
+  enabled      Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@map("payment_account")
 }
 
 model EmailTemplate {

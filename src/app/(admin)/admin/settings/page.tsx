@@ -12,6 +12,7 @@ import { AuditLog } from "./audit-log";
 import { CertificateTemplateForm } from "./certificate-template-form";
 import { EmailTemplatesForm } from "./email-templates-form";
 import { MyProfileForm } from "./my-profile-form";
+import { PaymentAccountsPanel } from "./payment-accounts-panel";
 import { SchoolProfileForm } from "./school-profile-form";
 import { ThresholdForm } from "./threshold-form";
 
@@ -19,9 +20,10 @@ export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const session = await requireAdmin();
-  const [data, me] = await Promise.all([
+  const [data, me, paymentAccounts] = await Promise.all([
     api.settings.get(),
     api.settings.myProfile(),
+    api.settings.paymentAccounts(),
   ]);
   const r2Configured = isR2Configured();
 
@@ -55,6 +57,7 @@ export default async function SettingsPage() {
         <TabsList>
           <TabsTrigger value="account">My Account</TabsTrigger>
           <TabsTrigger value="profile">School</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="admins">Admins</TabsTrigger>
           <TabsTrigger value="email">Email Templates</TabsTrigger>
           <TabsTrigger value="certificate">Certificate</TabsTrigger>
@@ -91,6 +94,13 @@ export default async function SettingsPage() {
             r2Configured={r2Configured}
           />
           <ThresholdForm attendanceThreshold={data.attendanceThreshold} />
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <PaymentAccountsPanel
+            accounts={paymentAccounts}
+            r2Configured={r2Configured}
+          />
         </TabsContent>
 
         <TabsContent value="admins">
